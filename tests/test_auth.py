@@ -41,6 +41,24 @@ def test_auth0_claims_create_admin_user_with_default_scope(monkeypatch) -> None:
     assert loaded == user
 
 
+def test_session_scope_uses_current_environment_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("FDRE_MODEL_CUSTOMER_ID", "Digitised Energy")
+    monkeypatch.setenv("FDRE_MODEL_WORKSPACE_ID", "FDRE Ops")
+
+    user = CurrentUser.from_session(
+        {
+            "subject": "auth0|abc",
+            "email": "operator@example.com",
+            "role": "operator",
+            "scope": {"customer_id": "legacy-customer", "workspace_id": "legacy-workspace"},
+        }
+    )
+
+    assert user is not None
+    assert user.scope.customer_id == "digitised-energy"
+    assert user.scope.workspace_id == "fdre-ops"
+
+
 def test_fdre_admin_email_alias_creates_admin_user(monkeypatch) -> None:
     monkeypatch.delenv("FDRE_MODEL_ADMIN_EMAILS", raising=False)
     monkeypatch.setenv("FDRE_ADMIN_EMAILS", "Srinivas.Sista@Digitised.Energy;sbshrey@gmail.com")

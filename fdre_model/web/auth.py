@@ -58,8 +58,8 @@ class CurrentUser:
             role = OPERATOR_ROLE
         scope_payload = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
         scope = WorkspaceScope.from_values(
-            str(scope_payload.get("customer_id") or "") or os.environ.get("FDRE_MODEL_CUSTOMER_ID"),
-            str(scope_payload.get("workspace_id") or "") or os.environ.get("FDRE_MODEL_WORKSPACE_ID"),
+            os.environ.get("FDRE_MODEL_CUSTOMER_ID") or str(scope_payload.get("customer_id") or ""),
+            os.environ.get("FDRE_MODEL_WORKSPACE_ID") or str(scope_payload.get("workspace_id") or ""),
         )
         return cls(
             email=email,
