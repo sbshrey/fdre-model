@@ -285,6 +285,7 @@ def test_admin_routes_require_admin_role(tmp_path: Path) -> None:
     assert client.post("/assumptions/save", headers=operator_headers).status_code == 403
     assert client.get("/users", headers=operator_headers).status_code == 403
     assert client.post("/users/save", headers=operator_headers).status_code == 403
+    assert client.post("/users/operator@example.com/activate", headers=operator_headers).status_code == 403
 
     assert client.get("/rules", headers=admin_headers).status_code == 200
     assert client.get("/assumptions", headers=admin_headers).status_code == 200
@@ -307,23 +308,25 @@ def test_admin_can_manage_workspace_users(tmp_path: Path) -> None:
     client = app.test_client()
     admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
+    users_page = client.get("/users", headers=admin_headers)
+    assert b"Activate Auth0 User" in users_page.data
+    assert b"Add or Update User" not in users_page.data
+    assert b"Save User" not in users_page.data
+    assert b"Reset Password" not in users_page.data
+    assert b"Delete Auth0" not in users_page.data
+    assert b"Create or sync Auth0 identity" not in users_page.data
+
     saved = client.post(
         "/users/save",
         headers=admin_headers,
-        data={
-            "email": "Operator@Example.com",
-            "name": "Ops User",
-            "role": "operator",
-            "active": "on",
-            "notes": "Control room access",
-        },
+        data={"email": "Operator@Example.com"},
         follow_redirects=True,
     )
 
     assert saved.status_code == 200
-    assert b"User access saved" in saved.data
+    assert b"User activated for this FDRE workspace" in saved.data
     assert b"operator@example.com" in saved.data
-    assert b"Control room access" in saved.data
+    assert b"operator" in saved.data
 
     deactivated = client.post(
         "/users/operator@example.com/deactivate",
@@ -334,10 +337,23 @@ def test_admin_can_manage_workspace_users(tmp_path: Path) -> None:
     assert deactivated.status_code == 200
     assert b"User deactivated" in deactivated.data
     assert b"inactive" in deactivated.data
+    assert b"Activate" in deactivated.data
+
+    reactivated = client.post(
+        "/users/operator@example.com/activate",
+        headers=admin_headers,
+        follow_redirects=True,
+    )
+
+    assert reactivated.status_code == 200
+    assert b"User activated for this FDRE workspace" in reactivated.data
+    assert b"active" in reactivated.data
 
 
-def test_admin_can_create_auth0_user_and_send_invite(tmp_path: Path) -> None:
+def test_admin_can_activate_existing_auth0_user_only(tmp_path: Path) -> None:
     auth0_management = FakeAuth0Management()
+    auth0_management.ensure_user(email="operator@example.com")
+    auth0_management.created.clear()
     app = create_app(workspace_root=tmp_path / ".workspace", auth0_management_client=auth0_management)
     client = app.test_client()
     admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
@@ -347,9 +363,7 @@ def test_admin_can_create_auth0_user_and_send_invite(tmp_path: Path) -> None:
         headers=admin_headers,
         data={
             "email": "Operator@Example.com",
-            "name": "Ops User",
-            "role": "operator",
-            "active": "on",
+            "role": "admin",
             "sync_auth0": "on",
             "send_reset_email": "on",
         },
@@ -357,11 +371,21 @@ def test_admin_can_create_auth0_user_and_send_invite(tmp_path: Path) -> None:
     )
 
     assert saved.status_code == 200
-    assert b"Auth0 user created" in saved.data
-    assert b"Password reset email sent" in saved.data
-    assert auth0_management.created == ["operator@example.com"]
-    assert auth0_management.reset == ["operator@example.com"]
+    assert b"User activated for this FDRE workspace" in saved.data
+    assert b"operator@example.com" in saved.data
+    assert auth0_management.created == []
+    assert auth0_management.reset == []
     assert auth0_management.blocked == [("auth0|operator@example.com", False)]
+
+    missing = client.post(
+        "/users/save",
+        headers=admin_headers,
+        data={"email": "missing@example.com"},
+        follow_redirects=True,
+    )
+
+    assert b"Auth0 user was not found" in missing.data
+    assert "missing@example.com" not in auth0_management.users
 
 
 def test_deactivate_blocks_auth0_user_and_self_deactivation_is_denied(tmp_path: Path) -> None:
@@ -395,28 +419,20 @@ def test_deactivate_blocks_auth0_user_and_self_deactivation_is_denied(tmp_path: 
     assert b"Admins cannot deactivate their own active session" in denied.data
 
 
-def test_admin_can_reset_and_delete_auth0_identity(tmp_path: Path) -> None:
+def test_password_reset_and_auth0_delete_routes_are_removed(tmp_path: Path) -> None:
     auth0_management = FakeAuth0Management()
     auth0_management.ensure_user(email="operator@example.com")
     app = create_app(workspace_root=tmp_path / ".workspace", auth0_management_client=auth0_management)
     client = app.test_client()
     admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
-    reset = client.post(
-        "/users/operator@example.com/reset-password",
-        headers=admin_headers,
-        follow_redirects=True,
-    )
-    deleted = client.post(
-        "/users/operator@example.com/delete-auth0",
-        headers=admin_headers,
-        follow_redirects=True,
-    )
+    reset = client.post("/users/operator@example.com/reset-password", headers=admin_headers)
+    deleted = client.post("/users/operator@example.com/delete-auth0", headers=admin_headers)
 
-    assert b"Password reset email sent" in reset.data
-    assert auth0_management.reset == ["operator@example.com"]
-    assert b"Auth0 user deleted" in deleted.data
-    assert auth0_management.deleted == ["auth0|operator@example.com"]
+    assert reset.status_code == 404
+    assert deleted.status_code == 404
+    assert auth0_management.reset == []
+    assert auth0_management.deleted == []
 
 
 def test_workspace_headers_isolate_live_board_state(tmp_path: Path) -> None:
@@ -480,7 +496,7 @@ def test_auth0_mode_uses_app_managed_users(tmp_path: Path, monkeypatch) -> None:
 
     added = client.post(
         "/users/save",
-        data={"email": "operator@example.com", "role": "operator", "active": "on"},
+        data={"email": "operator@example.com"},
         follow_redirects=True,
     )
     assert added.status_code == 200

@@ -27,7 +27,6 @@ from fdre_model.web.auth import (
     AUTH_SESSION_KEY,
     ADMIN_ROLE,
     CurrentUser,
-    OPERATOR_ROLE,
     admin_emails,
     auth0_client_id,
     auth0_client_secret,
@@ -532,25 +531,22 @@ def create_app(
         require_admin()
         state = workspace()
         target_email = request.form.get("email", "")
-        target_role = request.form.get("role", OPERATOR_ROLE)
-        target_active = request.form.get("active") == "on"
-        target_name = request.form.get("name", "")
         try:
-            if _same_email(target_email, current_user_email()) and (not target_active or target_role != ADMIN_ROLE):
-                raise ValueError("Admins cannot demote or deactivate their own active session.")
-            store.save_app_user(
-                state,
-                email=target_email,
-                role=target_role,
-                active=target_active,
-                name=target_name,
-                notes=request.form.get("notes", ""),
-                user_email=current_user_email(),
-            )
-            auth0_messages = _sync_auth0_user_from_form(auth0_management, request.form, email=target_email, name=target_name, active=target_active)
-            flash("User access saved." + (" " + " ".join(auth0_messages) if auth0_messages else ""), "success")
+            _activate_workspace_user(store, state, auth0_management, target_email, current_user_email())
+            flash("User activated for this FDRE workspace.", "success")
         except Exception as exc:
-            flash(f"User save failed: {exc}", "error")
+            flash(f"User activation failed: {exc}", "error")
+        return redirect(url_for("users_page"))
+
+    @app.post("/users/<path:email>/activate")
+    def activate_user(email: str) -> Response:
+        require_admin()
+        state = workspace()
+        try:
+            _activate_workspace_user(store, state, auth0_management, email, current_user_email())
+            flash("User activated for this FDRE workspace.", "success")
+        except Exception as exc:
+            flash(f"User activation failed: {exc}", "error")
         return redirect(url_for("users_page"))
 
     @app.post("/users/<path:email>/deactivate")
@@ -565,39 +561,6 @@ def create_app(
             flash("User deactivated." + (f" {auth0_message}" if auth0_message else ""), "success")
         except Exception as exc:
             flash(f"User update failed: {exc}", "error")
-        return redirect(url_for("users_page"))
-
-    @app.post("/users/<path:email>/reset-password")
-    def reset_user_password(email: str) -> Response:
-        require_admin()
-        try:
-            if auth0_management is None:
-                raise ValueError("Auth0 Management API is not configured.")
-            auth0_management.send_password_reset_email(email)
-            flash("Password reset email sent.", "success")
-        except Exception as exc:
-            flash(f"Password reset failed: {exc}", "error")
-        return redirect(url_for("users_page"))
-
-    @app.post("/users/<path:email>/delete-auth0")
-    def delete_auth0_user(email: str) -> Response:
-        require_admin()
-        state = workspace()
-        try:
-            if auth0_management is None:
-                raise ValueError("Auth0 Management API is not configured.")
-            if _same_email(email, current_user_email()):
-                raise ValueError("Admins cannot delete their own Auth0 identity.")
-            if _normalized_email(email) in admin_emails():
-                raise ValueError("Environment admin identities cannot be deleted from this app.")
-            auth0_user = auth0_management.find_user_by_email(email)
-            if auth0_user is None:
-                raise ValueError("Auth0 user was not found.")
-            auth0_management.delete_user(auth0_user.user_id)
-            _deactivate_or_record_deleted_user(store, state, email, current_user_email())
-            flash("Auth0 user deleted and FDRE access deactivated.", "success")
-        except Exception as exc:
-            flash(f"Auth0 delete failed: {exc}", "error")
         return redirect(url_for("users_page"))
 
     @app.get("/api/health")
@@ -709,30 +672,29 @@ def _persistence_from_env() -> HostedPersistence | None:
     raise ValueError("FDRE_STORAGE_BACKEND must be local or hosted.")
 
 
-def _sync_auth0_user_from_form(
+def _activate_workspace_user(
+    store: LocalWorkspaceStore,
+    state: Any,
     auth0_management: Any | None,
-    form: Any,
-    *,
     email: str,
-    name: str,
-    active: bool,
-) -> list[str]:
-    if "sync_auth0" not in form and "send_reset_email" not in form:
-        return []
-    if auth0_management is None:
-        raise ValueError("Auth0 Management API is not configured.")
-    messages: list[str] = []
-    if "sync_auth0" in form:
-        auth0_user, created = auth0_management.ensure_user(email=email, name=name)
-        if active:
-            auth0_management.block_user(auth0_user.user_id, blocked=False)
-        else:
-            auth0_management.block_user(auth0_user.user_id, blocked=True)
-        messages.append("Auth0 user created." if created else "Auth0 user synced.")
-    if "send_reset_email" in form:
-        auth0_management.send_password_reset_email(email)
-        messages.append("Password reset email sent.")
-    return messages
+    actor_email: str,
+) -> None:
+    normalized_email = _normalized_email(email)
+    if not normalized_email or "@" not in normalized_email:
+        raise ValueError("Enter a valid email address.")
+    auth0_user = None
+    if auth0_management is not None:
+        auth0_user = auth0_management.find_user_by_email(normalized_email)
+        if auth0_user is None:
+            raise ValueError("Auth0 user was not found. Add the user in Auth0 first, then activate access here.")
+    store.activate_app_user(
+        state,
+        normalized_email,
+        user_email=actor_email,
+        name=getattr(auth0_user, "email", "") if auth0_user is not None else "",
+    )
+    if auth0_management is not None and auth0_user is not None:
+        auth0_management.block_user(auth0_user.user_id, blocked=False)
 
 
 def _block_auth0_user(auth0_management: Any | None, email: str) -> str:
@@ -743,20 +705,6 @@ def _block_auth0_user(auth0_management: Any | None, email: str) -> str:
         return "No matching Auth0 user was found to block."
     auth0_management.block_user(auth0_user.user_id, blocked=True)
     return "Matching Auth0 user blocked."
-
-
-def _deactivate_or_record_deleted_user(store: LocalWorkspaceStore, state: Any, email: str, actor_email: str) -> None:
-    try:
-        store.deactivate_app_user(state, email, user_email=actor_email)
-    except ValueError:
-        store.save_app_user(
-            state,
-            email=email,
-            role=OPERATOR_ROLE,
-            active=False,
-            user_email=actor_email,
-            notes="Auth0 identity deleted.",
-        )
 
 
 def _same_email(first: str, second: str) -> bool:

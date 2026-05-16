@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">Access Control</p>
     <h1>Users</h1>
-    <p class="muted">Manage who can access this FDRE workspace and which users have admin rights.</p>
+    <p class="muted">Activate or deactivate FDRE workspace access. Create user identities directly in Auth0.</p>
   </div>
 </section>
 
@@ -13,8 +13,8 @@
   <section class="panel">
     <div class="panel-head">
       <div>
-        <h2>Add or Update User</h2>
-        <p class="muted">The email must match the email claim returned by Auth0.</p>
+        <h2>Activate Auth0 User</h2>
+        <p class="muted">Add the user in Auth0 first, then activate the same email for this workspace.</p>
       </div>
     </div>
     <form method="post" action="{{ url_for('save_user') }}" class="manual-form">
@@ -22,37 +22,8 @@
         <span>Email</span>
         <input name="email" type="email" required placeholder="operator@example.com">
       </label>
-      <label>
-        <span>Name</span>
-        <input name="name" placeholder="Optional display name">
-      </label>
-      <label>
-        <span>Role</span>
-        <select name="role">
-          <option value="operator">Operator</option>
-          <option value="admin">Admin</option>
-        </select>
-      </label>
-      <label class="check-label">
-        <input name="active" type="checkbox" checked>
-        <span>Active</span>
-      </label>
-      {% if auth0_management_enabled %}
-        <label class="check-label">
-          <input name="sync_auth0" type="checkbox" checked>
-          <span>Create or sync Auth0 identity</span>
-        </label>
-        <label class="check-label">
-          <input name="send_reset_email" type="checkbox" checked>
-          <span>Send invite/reset email</span>
-        </label>
-      {% endif %}
-      <label>
-        <span>Notes</span>
-        <textarea name="notes" rows="3" placeholder="Reason, team, or access context"></textarea>
-      </label>
       <div class="actions end">
-        <button type="submit">Save User</button>
+        <button type="submit">Activate User</button>
       </div>
     </form>
   </section>
@@ -62,9 +33,9 @@
       <div>
         <h2>Auth0 Identity</h2>
         {% if auth0_management_enabled %}
-          <p class="muted">Management API is configured. New users can be created in Auth0 on {{ auth0_connection_name }} and invited by password reset email.</p>
+          <p class="muted">Management API is configured. This portal verifies existing Auth0 users and toggles access only.</p>
         {% else %}
-          <p class="muted">Management API is not configured. This page will only manage FDRE app access.</p>
+          <p class="muted">Management API is not configured. This page toggles FDRE app access for configured users.</p>
         {% endif %}
       </div>
     </div>
@@ -74,8 +45,8 @@
         <span>{{ auth0_connection_name }}</span>
       </div>
       <div>
-        <strong>Identity Ops</strong>
-        <span>{% if auth0_management_enabled %}enabled{% else %}disabled{% endif %}</span>
+        <strong>Portal Scope</strong>
+        <span>activate / deactivate</span>
       </div>
     </div>
     <h2>Environment Admins</h2>
@@ -130,19 +101,15 @@
             <td>{{ user.updated_by }}</td>
             <td class="wrap">{{ user.notes }}</td>
             <td class="row-actions">
-              {% if auth0_management_enabled and user.active %}
-                <form method="post" action="{{ url_for('reset_user_password', email=user.email) }}">
-                  <button class="small ghost" type="submit">Reset Password</button>
-                </form>
-              {% endif %}
-              {% if user.active and user.source != 'env' %}
+              {% if user.source == 'env' %}
+                <span class="muted">Locked</span>
+              {% elif user.active %}
                 <form method="post" action="{{ url_for('deactivate_user', email=user.email) }}">
                   <button class="small ghost" type="submit">Deactivate</button>
                 </form>
-              {% endif %}
-              {% if auth0_management_enabled and user.source != 'env' %}
-                <form method="post" action="{{ url_for('delete_auth0_user', email=user.email) }}">
-                  <button class="small danger" type="submit">Delete Auth0</button>
+              {% else %}
+                <form method="post" action="{{ url_for('activate_user', email=user.email) }}">
+                  <button class="small ghost" type="submit">Activate</button>
                 </form>
               {% endif %}
             </td>

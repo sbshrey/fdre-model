@@ -334,6 +334,31 @@ class LocalWorkspaceStore:
         self._write_app_users(state, list(users.values()))
         return saved
 
+    def activate_app_user(
+        self,
+        state: Workspace,
+        email: str,
+        *,
+        user_email: str,
+        name: str = "",
+        notes: str = "",
+    ) -> AppUser:
+        normalized_email = _normalize_email(email)
+        if not normalized_email or "@" not in normalized_email:
+            raise ValueError("Enter a valid email address.")
+        existing = self.app_user(state, normalized_email)
+        if existing is not None and existing.source == "env":
+            return existing
+        return self.save_app_user(
+            state,
+            email=normalized_email,
+            role=existing.role if existing is not None else "operator",
+            active=True,
+            user_email=user_email,
+            name=existing.name if existing is not None else name,
+            notes=existing.notes if existing is not None else notes,
+        )
+
     def load_rules(self, state: Workspace) -> list[RuleDefinition]:
         path = self.rules_path(state)
         payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []

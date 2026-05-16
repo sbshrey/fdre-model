@@ -33,6 +33,9 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 9. Add preferred Live Board preview windows.
   - Default remains 6 actual + 1 live + 24 forecast = 31 rows.
   - Operators can load a custom start/live/end interval range without changing saved assumptions.
+- [x] 10. Restrict portal user management to activation/deactivation.
+  - Auth0 remains the source for creating identities, password reset, and identity deletion.
+  - FDRE admins can only activate or deactivate workspace access from the portal.
 
 ## Verification Log
 
@@ -53,3 +56,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Gated Syncfusion assets behind FDRE_SYNCFUSION_LICENSE_KEY so unlicensed hosted environments use native tables without the Syncfusion validation banner.
 - 2026-05-16: Added in-app active input editing for source rows and pasted CSV replacements, preserving immutable version history and active-version audit metadata.
 - 2026-05-16: Added Live Board preferred range controls with custom start/live/end preview cycles and default 31-row operating window display.
+- 2026-05-16: Removed portal-side Auth0 creation, password reset, identity deletion, and role-edit UI; Users now only activates or deactivates workspace access.
