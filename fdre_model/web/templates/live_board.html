@@ -151,7 +151,7 @@
         <th>Shortfall</th>
         <th>Market</th>
         <th>Rule</th>
-        <th class="why-column">Why</th>
+        <th class="why-column" data-grid-width="360">Why</th>
       </tr>
     </thead>
     <tbody>
@@ -174,13 +174,33 @@
           <td class="why-column">
             <details class="why-detail">
               <summary>Why</summary>
-              <div>
-                <strong>Applied</strong>
-                <p class="mono">{{ row.applied_rule_ids or "none" }}</p>
-                <strong>Skipped</strong>
-                <p class="mono">{{ row.skipped_rule_ids or "none" }}</p>
-                <strong>Trace</strong>
-                <p class="mono wrap">{{ row.audit_trace or "none" }}</p>
+              <div class="why-card">
+                <p class="why-summary">{{ row.why.summary }}</p>
+                <div class="why-context">
+                  {% for item in row.why.context %}
+                    <span>{{ item }}</span>
+                  {% endfor %}
+                </div>
+                {% if row.why.outcomes %}
+                  <div class="why-outcomes">
+                    {% for outcome in row.why.outcomes %}
+                      <span><strong>{{ outcome.value }}</strong>{{ outcome.label }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                <strong>Rule path</strong>
+                <ol class="why-steps">
+                  {% for step in row.why.steps %}
+                    <li>{{ step }}</li>
+                  {% endfor %}
+                </ol>
+                <details class="technical-audit">
+                  <summary>Technical audit</summary>
+                  {% for item in row.why.technical %}
+                    <strong>{{ item.label }}</strong>
+                    <p class="mono wrap">{{ item.value }}</p>
+                  {% endfor %}
+                </details>
               </div>
             </details>
           </td>

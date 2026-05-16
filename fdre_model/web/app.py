@@ -196,7 +196,7 @@ def create_app(
             "live_board.html",
             active_page="live",
             cycle=cycle,
-            rows=filtered_rows,
+            rows=_rows_with_explanations(filtered_rows),
             total_rows=len(rows),
             filters=filters,
             market_options=market_options,
@@ -234,7 +234,7 @@ def create_app(
             "live_board.html",
             active_page="history",
             cycle=cycle,
-            rows=rows,
+            rows=_rows_with_explanations(rows),
             total_rows=len(rows),
             filters=_default_filters(),
             market_options=_market_options(rows),
@@ -694,6 +694,183 @@ def _filter_rows(rows: list[dict[str, str]], filters: dict[str, str]) -> list[di
     if filters["alerts"]:
         result = [row for row in result if _row_has_alert(row)]
     return result
+
+
+def _rows_with_explanations(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    return [{**row, "why": _why_for_row(row)} for row in rows]
+
+
+def _why_for_row(row: dict[str, str]) -> dict[str, Any]:
+    is_peak = row.get("is_peak") == "1"
+    market = row.get("recommended_market") or "None"
+    available = _float(row.get("available_mwh"))
+    ppa = _float(row.get("ppa_sale_mwh"))
+    merchant = _float(row.get("merchant_sale_mwh"))
+    peak_sale = _float(row.get("peak_power_sale_mwh"))
+    bess_charge = _float(row.get("bess_charge_mwh"))
+    bess_discharge = _float(row.get("bess_discharge_mwh"))
+    shortfall = _float(row.get("shortfall_mwh"))
+    curtailment = _float(row.get("curtailment_mwh"))
+    residual = _float(row.get("residual_mwh"))
+    penalty = _float(row.get("penalty_value"))
+    revenue = _float(row.get("revenue_value"))
+    peak_text = "peak" if is_peak else "non-peak"
+    summary = _why_summary(market, peak_text, available, peak_sale, ppa, merchant, bess_charge, bess_discharge, shortfall)
+    steps = _why_steps(
+        is_peak=is_peak,
+        available=available,
+        ppa=ppa,
+        merchant=merchant,
+        peak_sale=peak_sale,
+        bess_charge=bess_charge,
+        bess_discharge=bess_discharge,
+        shortfall=shortfall,
+        curtailment=curtailment,
+        residual=residual,
+    )
+    outcomes = _why_outcomes(
+        peak_sale=peak_sale,
+        ppa=ppa,
+        merchant=merchant,
+        bess_charge=bess_charge,
+        bess_discharge=bess_discharge,
+        shortfall=shortfall,
+        curtailment=curtailment,
+        residual=residual,
+        revenue=revenue,
+        penalty=penalty,
+    )
+    return {
+        "summary": summary,
+        "context": [
+            f"{row.get('status', '').title()} interval",
+            "Peak" if is_peak else "Non-peak",
+            f"Available {_format_mwh(available)}",
+            f"SOC open {_format_mwh(_float(row.get('bess_open_mwh')))}",
+        ],
+        "steps": steps,
+        "outcomes": outcomes,
+        "technical": [
+            {"label": "Applied rules", "value": _rule_text(row.get("applied_rule_ids"))},
+            {"label": "Skipped/conflicting rules", "value": _rule_text(row.get("skipped_rule_ids"))},
+            {"label": "Raw trace", "value": row.get("audit_trace") or "none"},
+        ],
+    }
+
+
+def _why_summary(
+    market: str,
+    peak_text: str,
+    available: float,
+    peak_sale: float,
+    ppa: float,
+    merchant: float,
+    bess_charge: float,
+    bess_discharge: float,
+    shortfall: float,
+) -> str:
+    if market == "Peak Power":
+        if shortfall > 0:
+            return (
+                f"Peak obligation was prioritised for this {peak_text} interval. "
+                f"{_format_mwh(peak_sale)} was delivered and {_format_mwh(shortfall)} remains short."
+            )
+        return f"Peak obligation was met first with {_format_mwh(peak_sale)} delivered."
+    if market == "PPA":
+        if merchant > 0:
+            return (
+                f"PPA is the primary recommendation for this {peak_text} interval. "
+                f"PPA used {_format_mwh(ppa)} first and {_format_mwh(merchant)} residual went to merchant."
+            )
+        return f"PPA selected because {_format_mwh(available)} available energy fits the PPA priority path."
+    if market == "Merchant":
+        return f"Merchant selected because PPA priority was satisfied and {_format_mwh(merchant)} residual remained."
+    if market == "BESS Charge":
+        return f"Battery charging selected because {_format_mwh(bess_charge)} residual energy could be stored."
+    if market == "Curtailment":
+        return "Curtailment selected because energy remained after sale and storage rules."
+    if market == "Shortfall":
+        return f"Shortfall remains after available generation and BESS support; gap is {_format_mwh(shortfall)}."
+    return "No market allocation was required for this interval."
+
+
+def _why_steps(
+    *,
+    is_peak: bool,
+    available: float,
+    ppa: float,
+    merchant: float,
+    peak_sale: float,
+    bess_charge: float,
+    bess_discharge: float,
+    shortfall: float,
+    curtailment: float,
+    residual: float,
+) -> list[str]:
+    steps: list[str] = []
+    if is_peak:
+        generation_to_peak = max(peak_sale - bess_discharge, 0.0)
+        steps.append(f"Peak rule ran first and used {_format_mwh(generation_to_peak)} from available generation.")
+        if bess_discharge > 0:
+            steps.append(f"BESS discharged {_format_mwh(bess_discharge)} to reduce the peak obligation gap.")
+        if shortfall > 0:
+            steps.append(f"Peak obligation still has {_format_mwh(shortfall)} shortfall, so penalty exposure is recorded.")
+    else:
+        steps.append("Peak obligation rule was skipped because this interval is non-peak.")
+    if ppa > 0:
+        steps.append(f"PPA rule allocated {_format_mwh(ppa)} under its priority and capacity.")
+    if merchant > 0:
+        steps.append(f"Merchant rule allocated {_format_mwh(merchant)} of remaining energy.")
+    if bess_charge > 0:
+        steps.append(f"BESS charge rule stored {_format_mwh(bess_charge)} of remaining energy.")
+    if curtailment > 0:
+        steps.append(f"Curtailment rule absorbed {_format_mwh(curtailment)} that could not be sold or stored.")
+    if residual <= 0:
+        steps.append("No residual energy remained for lower-priority residual rules.")
+    elif available <= 0:
+        steps.append("No generation was available to allocate.")
+    return steps
+
+
+def _why_outcomes(
+    *,
+    peak_sale: float,
+    ppa: float,
+    merchant: float,
+    bess_charge: float,
+    bess_discharge: float,
+    shortfall: float,
+    curtailment: float,
+    residual: float,
+    revenue: float,
+    penalty: float,
+) -> list[dict[str, str]]:
+    candidates = [
+        ("Peak", peak_sale, "MWh"),
+        ("PPA", ppa, "MWh"),
+        ("Merchant", merchant, "MWh"),
+        ("BESS charge", bess_charge, "MWh"),
+        ("BESS discharge", bess_discharge, "MWh"),
+        ("Shortfall", shortfall, "MWh"),
+        ("Curtailment", curtailment, "MWh"),
+        ("Residual", residual, "MWh"),
+        ("Revenue", revenue, ""),
+        ("Penalty", penalty, ""),
+    ]
+    return [
+        {"label": label, "value": _format_mwh(value) if unit == "MWh" else f"{value:.1f}"}
+        for label, value, unit in candidates
+        if abs(value) > 0.000001
+    ]
+
+
+def _rule_text(value: str | None) -> str:
+    text = (value or "").strip()
+    return text.replace("_", " ") if text else "none"
+
+
+def _format_mwh(value: float) -> str:
+    return f"{value:.1f} MWh"
 
 
 def _market_options(rows: list[dict[str, str]]) -> list[str]:
