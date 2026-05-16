@@ -44,3 +44,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Refreshed the portal theme using Digitised Energy visual cues: light grey shell, green energy accent, compact rectangular controls, and responsive branded header.
 - 2026-05-16: Added per-version input CSV downloads from the Inputs page for active and historical input versions.
 - 2026-05-16: Added Syncfusion EJ2 Grid progressive enhancement for app tables using CDN assets and an optional environment-provided license key.
+- 2026-05-16: Gated Syncfusion assets behind FDRE_SYNCFUSION_LICENSE_KEY so unlicensed hosted environments use native tables without the Syncfusion validation banner.

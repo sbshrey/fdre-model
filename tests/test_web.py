@@ -54,9 +54,9 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Source Health" in live.data
     assert b"Operations Alerts" in live.data
     assert b"Why" in live.data
-    assert b"cdn.syncfusion.com/ej2/33.2.3" in live.data
-    assert b"syncfusion-tables.js" in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data
+    assert b"cdn.syncfusion.com/ej2/33.2.3" not in live.data
+    assert b"syncfusion-tables.js" not in live.data
 
     inputs = client.get("/inputs")
     assert inputs.status_code == 200
@@ -93,6 +93,19 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     history = client.get("/history")
     assert history.status_code == 200
     assert b"Cycles" in history.data
+
+
+def test_syncfusion_assets_load_only_with_license_key(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("FDRE_SYNCFUSION_LICENSE_KEY", "test-license-key")
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    live = client.get("/")
+
+    assert live.status_code == 200
+    assert b"cdn.syncfusion.com/ej2/33.2.3" in live.data
+    assert b"syncfusion-tables.js" in live.data
+    assert b"test-license-key" in live.data
 
 
 def test_input_versions_can_be_downloaded(tmp_path: Path) -> None:

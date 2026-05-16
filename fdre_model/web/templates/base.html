@@ -4,15 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}FDRE Market Operations{% endblock %}</title>
-  <link rel="stylesheet" href="https://cdn.syncfusion.com/ej2/33.2.3/bootstrap5.3.css">
+  {% if syncfusion_license_key %}
+    <link rel="stylesheet" href="https://cdn.syncfusion.com/ej2/33.2.3/bootstrap5.3.css">
+  {% endif %}
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
-  <script src="https://cdn.syncfusion.com/ej2/33.2.3/dist/ej2.min.js" defer></script>
   {% if syncfusion_license_key %}
     <script>
       window.FDRE_SYNCFUSION_LICENSE_KEY = {{ syncfusion_license_key | tojson }};
     </script>
+    <script src="https://cdn.syncfusion.com/ej2/33.2.3/dist/ej2.min.js" defer></script>
+    <script src="{{ url_for('static', filename='syncfusion-tables.js') }}" defer></script>
   {% endif %}
-  <script src="{{ url_for('static', filename='syncfusion-tables.js') }}" defer></script>
   {% block head_extra %}{% endblock %}
 </head>
 <body>
