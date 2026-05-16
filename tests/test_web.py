@@ -1,10 +1,42 @@
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 from pathlib import Path
 
 from fdre_model.web.app import create_app
 from fdre_model.web.auth import AUTH_SESSION_KEY, CurrentUser
+
+
+class FakeAuth0Management:
+    def __init__(self) -> None:
+        self.users: dict[str, SimpleNamespace] = {}
+        self.created: list[str] = []
+        self.blocked: list[tuple[str, bool]] = []
+        self.reset: list[str] = []
+        self.deleted: list[str] = []
+
+    def ensure_user(self, *, email: str, name: str = "") -> tuple[SimpleNamespace, bool]:
+        normalized = email.strip().lower()
+        if normalized in self.users:
+            return self.users[normalized], False
+        user = SimpleNamespace(user_id=f"auth0|{normalized}", email=normalized)
+        self.users[normalized] = user
+        self.created.append(normalized)
+        return user, True
+
+    def find_user_by_email(self, email: str) -> SimpleNamespace | None:
+        return self.users.get(email.strip().lower())
+
+    def block_user(self, user_id: str, *, blocked: bool = True) -> None:
+        self.blocked.append((user_id, blocked))
+
+    def send_password_reset_email(self, email: str) -> str:
+        self.reset.append(email.strip().lower())
+        return "reset sent"
+
+    def delete_user(self, user_id: str) -> None:
+        self.deleted.append(user_id)
 
 
 def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
@@ -148,6 +180,89 @@ def test_admin_can_manage_workspace_users(tmp_path: Path) -> None:
     assert deactivated.status_code == 200
     assert b"User deactivated" in deactivated.data
     assert b"inactive" in deactivated.data
+
+
+def test_admin_can_create_auth0_user_and_send_invite(tmp_path: Path) -> None:
+    auth0_management = FakeAuth0Management()
+    app = create_app(workspace_root=tmp_path / ".workspace", auth0_management_client=auth0_management)
+    client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
+    saved = client.post(
+        "/users/save",
+        headers=admin_headers,
+        data={
+            "email": "Operator@Example.com",
+            "name": "Ops User",
+            "role": "operator",
+            "active": "on",
+            "sync_auth0": "on",
+            "send_reset_email": "on",
+        },
+        follow_redirects=True,
+    )
+
+    assert saved.status_code == 200
+    assert b"Auth0 user created" in saved.data
+    assert b"Password reset email sent" in saved.data
+    assert auth0_management.created == ["operator@example.com"]
+    assert auth0_management.reset == ["operator@example.com"]
+    assert auth0_management.blocked == [("auth0|operator@example.com", False)]
+
+
+def test_deactivate_blocks_auth0_user_and_self_deactivation_is_denied(tmp_path: Path) -> None:
+    auth0_management = FakeAuth0Management()
+    auth0_management.ensure_user(email="operator@example.com")
+    app = create_app(workspace_root=tmp_path / ".workspace", auth0_management_client=auth0_management)
+    client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
+    client.post(
+        "/users/save",
+        headers=admin_headers,
+        data={"email": "operator@example.com", "role": "operator", "active": "on"},
+    )
+    deactivated = client.post(
+        "/users/operator@example.com/deactivate",
+        headers=admin_headers,
+        follow_redirects=True,
+    )
+
+    assert deactivated.status_code == 200
+    assert b"Matching Auth0 user blocked" in deactivated.data
+    assert auth0_management.blocked[-1] == ("auth0|operator@example.com", True)
+
+    denied = client.post(
+        "/users/admin@example.com/deactivate",
+        headers=admin_headers,
+        follow_redirects=True,
+    )
+
+    assert b"Admins cannot deactivate their own active session" in denied.data
+
+
+def test_admin_can_reset_and_delete_auth0_identity(tmp_path: Path) -> None:
+    auth0_management = FakeAuth0Management()
+    auth0_management.ensure_user(email="operator@example.com")
+    app = create_app(workspace_root=tmp_path / ".workspace", auth0_management_client=auth0_management)
+    client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
+    reset = client.post(
+        "/users/operator@example.com/reset-password",
+        headers=admin_headers,
+        follow_redirects=True,
+    )
+    deleted = client.post(
+        "/users/operator@example.com/delete-auth0",
+        headers=admin_headers,
+        follow_redirects=True,
+    )
+
+    assert b"Password reset email sent" in reset.data
+    assert auth0_management.reset == ["operator@example.com"]
+    assert b"Auth0 user deleted" in deleted.data
+    assert auth0_management.deleted == ["auth0|operator@example.com"]
 
 
 def test_workspace_headers_isolate_live_board_state(tmp_path: Path) -> None:

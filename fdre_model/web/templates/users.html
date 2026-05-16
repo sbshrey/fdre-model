@@ -37,6 +37,16 @@
         <input name="active" type="checkbox" checked>
         <span>Active</span>
       </label>
+      {% if auth0_management_enabled %}
+        <label class="check-label">
+          <input name="sync_auth0" type="checkbox" checked>
+          <span>Create or sync Auth0 identity</span>
+        </label>
+        <label class="check-label">
+          <input name="send_reset_email" type="checkbox" checked>
+          <span>Send invite/reset email</span>
+        </label>
+      {% endif %}
       <label>
         <span>Notes</span>
         <textarea name="notes" rows="3" placeholder="Reason, team, or access context"></textarea>
@@ -50,10 +60,26 @@
   <section class="panel">
     <div class="panel-head">
       <div>
-        <h2>Environment Admins</h2>
-        <p class="muted">These users are locked as active admins from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS.</p>
+        <h2>Auth0 Identity</h2>
+        {% if auth0_management_enabled %}
+          <p class="muted">Management API is configured. New users can be created in Auth0 on {{ auth0_connection_name }} and invited by password reset email.</p>
+        {% else %}
+          <p class="muted">Management API is not configured. This page will only manage FDRE app access.</p>
+        {% endif %}
       </div>
     </div>
+    <div class="meta-grid user-meta">
+      <div>
+        <strong>Connection</strong>
+        <span>{{ auth0_connection_name }}</span>
+      </div>
+      <div>
+        <strong>Identity Ops</strong>
+        <span>{% if auth0_management_enabled %}enabled{% else %}disabled{% endif %}</span>
+      </div>
+    </div>
+    <h2>Environment Admins</h2>
+    <p class="muted">These users are locked as active admins from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS.</p>
     {% if env_admin_emails %}
       <ul class="compact-list">
         {% for email in env_admin_emails %}
@@ -103,10 +129,20 @@
             <td class="mono">{{ user.updated_at }}</td>
             <td>{{ user.updated_by }}</td>
             <td class="wrap">{{ user.notes }}</td>
-            <td>
+            <td class="row-actions">
+              {% if auth0_management_enabled and user.active %}
+                <form method="post" action="{{ url_for('reset_user_password', email=user.email) }}">
+                  <button class="small ghost" type="submit">Reset Password</button>
+                </form>
+              {% endif %}
               {% if user.active and user.source != 'env' %}
                 <form method="post" action="{{ url_for('deactivate_user', email=user.email) }}">
                   <button class="small ghost" type="submit">Deactivate</button>
+                </form>
+              {% endif %}
+              {% if auth0_management_enabled and user.source != 'env' %}
+                <form method="post" action="{{ url_for('delete_auth0_user', email=user.email) }}">
+                  <button class="small danger" type="submit">Delete Auth0</button>
                 </form>
               {% endif %}
             </td>

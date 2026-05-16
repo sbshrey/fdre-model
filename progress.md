@@ -40,3 +40,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Item 7 completed with stricter CSV upload checks for cadence, units, timezone-naive timestamps, active raw input revalidation, and critical source-health flags for invalid rolling-window inputs.
 - 2026-05-16: Replaced synthetic bootstrap inputs with SECI-derived 2026 sample data for solar, wind, BESS state, T2 pricing, and peak schedule. Existing manual uploads are preserved; legacy seed inputs refresh automatically.
 - 2026-05-16: Added in-app FDRE user administration. Admin emails can come from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS; admins can add/deactivate workspace users and set operator/admin roles.
+- 2026-05-16: Added Auth0 Management API integration for admin-created users, invite/reset emails, Auth0 blocking on deactivation, and guarded Auth0 identity deletion.
