@@ -82,7 +82,7 @@ The workbook uses derived forecast parameters:
 
 Status update: implemented after this review. Each decision cycle now stores workbook-derived `P1-P5`, 30-day peak forecast, and 365-day generation metrics, and the Live Board shows them in a Workbook Metrics panel.
 
-Remaining gap: these metrics are visible and exported, but the non-peak and peak allocation rules still need to consume them for workbook-parity decisions.
+Remaining gap: these metrics are visible/exported and now feed non-peak cases. Peak allocation, procurement, and penalty-minimization rules still need to consume them for workbook-parity decisions.
 
 ### 4. Compliance Calculations Are Placeholders
 
@@ -95,19 +95,16 @@ Status update: implemented after this review. Monthly 90% peak compliance, month
 
 Remaining gap: compliance values do not yet drive merchant sale beyond capacity, procurement, or penalty minimization decisions.
 
-### 5. Non-Peak Rule Cases Are Only Partially Implemented
+### 5. Non-Peak Rule Cases Are Implemented For V1 Dispatch
 
-Current non-peak behavior is simple: PPA first, merchant next, BESS charge if residual remains.
+Status update: implemented after this review. The app now includes an enabled `non_peak_workbook_dispatch` rule that covers:
 
-Workbook non-peak rules require:
+- Case 2: forecast curtailment can cover BESS headroom, so current residual is sold before charging.
+- Case 3: forecast curtailment cannot cover BESS headroom, so BESS charging is prioritized.
+- Cases 4/5: PPA versus merchant sale order is chosen from `T1` PPA tariff versus live `T2` merchant price.
+- Case 7: when BESS has no material headroom, residual can flow to sale markets instead of charging.
 
-- Case 2: if forecast curtailed energy is enough to charge BESS, allocate to PPA, merchant, and BESS.
-- Case 3: if forecast curtailed energy is not enough, prioritize BESS charging.
-- Cases 4/5: choose PPA vs merchant order based on `T1 > T2`.
-- Case 7: if BESS is sufficiently charged, sell residual to merchant.
-- Merchant sale beyond capacity only if compliance conditions are met.
-
-Impact: non-peak market selection can differ materially from the workbook.
+Remaining gap: merchant sale beyond configured capacity is still deferred until compliance-driven merchant/procurement rules are implemented.
 
 ### 6. Peak Rule Cases Are Only Partially Implemented
 
@@ -162,8 +159,7 @@ Impact: changes can be correct against code behavior while still drifting from t
 ## Recommended Work Order
 
 1. Add a workbook-aligned variable registry and expose it in assumptions/rules.
-2. Implement non-peak cases 2/3/4/5/7 using the workbook metrics now available.
-3. Implement peak cases 6/7 and Clause 1/iii merchant-for-peak logic.
-4. Add workbook-complete BESS behavior: degradation, SOH capacity adjustment, C-rate, residual discharge, and arbitrage.
-5. Implement merchant buy/procurement rules for penalty minimization and annual CUF.
-6. Add workbook parity tests using representative rows from `MODEL v2`.
+2. Implement peak cases 6/7 and Clause 1/iii merchant-for-peak logic.
+3. Add workbook-complete BESS behavior: degradation, SOH capacity adjustment, C-rate, residual discharge, and arbitrage.
+4. Implement merchant buy/procurement rules for penalty minimization and annual CUF.
+5. Add workbook parity tests using representative rows from `MODEL v2`.

@@ -128,6 +128,7 @@ Rules are evaluated top-down by priority. Higher-priority rules allocate first; 
 | Priority | Rule ID | Enabled | Condition | Action | Behavior |
 | ---: | --- | --- | --- | --- | --- |
 | `10` | `peak_power_obligation` | Yes | `is_peak = true` | `allocate_peak_power` | During peak, allocate generation to peak obligation first, then use BESS, then record shortfall and penalty. |
+| `15` | `non_peak_workbook_dispatch` | Yes | non-peak, residual exists, no earlier allocation | `allocate_non_peak_workbook` | Applies workbook non-peak cases 2/3/4/5/7 using forecast curtailment, BESS headroom, and T1-vs-T2 tariff order. |
 | `20` | `ppa_sale` | Yes | `min_residual_mwh = 0.000001` | `sell_ppa` | Sell residual energy to PPA up to `ppa_mwh`. |
 | `30` | `merchant_sale` | Yes | `min_residual_mwh = 0.000001` | `sell_merchant` | Sell remaining residual to merchant up to `merchant_mwh`. |
 | `35` | `forecast_peak_charge` | No | forecast non-peak | `monitor` | Placeholder for future lookahead charging logic. |
@@ -141,10 +142,12 @@ Rules are evaluated top-down by priority. Higher-priority rules allocate first; 
 Important V1 behavior:
 
 - Peak rows prioritize peak obligation before PPA or merchant.
-- Non-peak rows skip peak obligation and then allocate to PPA before merchant.
+- Non-peak rows skip peak obligation and use the workbook dispatch rule by default.
+- If forecast curtailment before the next peak can cover BESS headroom, non-peak residual is sold before charging. If it cannot, BESS charging is prioritized.
+- PPA versus merchant sale order is selected from `T1` PPA tariff versus the interval `T2` merchant price.
 - If a higher-priority rule consumes all residual energy, lower residual-allocation rules are marked as conflicts, for example `merchant_sale:conflict:residual_allocated_by=ppa_sale`.
 - Disabled future rules are still present in the trace as `disabled` so the operator can see that they were not considered.
-- Under the current default caps, `ppa_mwh + merchant_mwh = evacuation_mwh` (`150 + 35 = 185`). Because of that, BESS charge and curtailment usually do not trigger unless rule order, capacities, or enabled rules are changed.
+- Under the current default caps, `ppa_mwh + merchant_mwh = evacuation_mwh` (`150 + 35 = 185`), but the non-peak workbook rule can still charge BESS first when future curtailment is not enough to cover battery headroom.
 
 ## Allocation Formulas
 
@@ -564,8 +567,8 @@ V1 is advisory only. It recommends market allocation but does not execute dispat
 
 Live/API ingestion is architected through versioned input adapters, but V1 currently uses manual/CSV uploads and sample seed files.
 
-Annual CUF, monthly compliance, merchant buy, and penalty-procurement rules exist as disabled monitor placeholders. They are available in Rule Admin but do not allocate energy until implemented/enabled with concrete actions.
+Annual CUF, monthly compliance, merchant buy, and penalty-procurement rules exist as disabled monitor placeholders. Compliance metrics are calculated, but these monitor rules do not allocate energy until implemented/enabled with concrete actions.
 
-BESS charge and curtailment actions are implemented, but the default rule order and default capacities make them uncommon in the current sample because PPA and merchant capacity together cover the full evacuation limit.
+BESS charge and curtailment actions are implemented. Non-peak workbook dispatch can now charge BESS before sale markets when forecast curtailment is not sufficient to fill expected headroom.
 
 Forecast rows roll BESS state forward from the live/current interval, which is useful for live operations but means forecast recommendations depend strongly on the latest actual/live SOC and the prior forecast decisions in the same cycle.

@@ -54,6 +54,7 @@ def build_decisions(
         default_soc_mwh=config.state.initial_bess_soc_mwh,
         default_soh_fraction=config.state.initial_bess_soh_fraction,
     )
+    forecast_curtailment = _non_peak_forecast_curtailment_lookahead(config, buckets, solar, wind, peak_schedule)
 
     context = RuleContext(
         ppa_cap_mwh=config.capacities.ppa_mwh,
@@ -67,6 +68,7 @@ def build_decisions(
         ppa_tariff=config.tariffs.ppa,
         peak_tariff=config.tariffs.peak_power,
         penalty_multiplier=config.tariffs.penalty_multiplier,
+        forecast_curtailment_mwh_by_start=forecast_curtailment,
     )
 
     decisions: list[MarketDecision] = []
@@ -97,6 +99,28 @@ def build_decisions(
         )
         decisions.append(evaluate_rules(decision, rolling_state, rules, context))
     return decisions, buckets
+
+
+def _non_peak_forecast_curtailment_lookahead(
+    config: AppConfig,
+    buckets: list[TimeBucket],
+    solar: dict[datetime, float],
+    wind: dict[datetime, float],
+    peak_schedule: dict[datetime, bool],
+) -> dict[datetime, float]:
+    result: dict[datetime, float] = {}
+    for index, bucket in enumerate(buckets):
+        curtailment = 0.0
+        for future in buckets[index + 1 :]:
+            if bool(peak_schedule.get(future.start, future.is_peak)):
+                break
+            if future.status not in {"live", "forecast"}:
+                continue
+            wind_mwh = min(max(wind.get(future.start, 0.0), 0.0), config.capacities.wind_mwh)
+            solar_mwh = min(max(solar.get(future.start, 0.0), 0.0), config.capacities.solar_mwh)
+            curtailment += max(wind_mwh + solar_mwh - config.capacities.evacuation_mwh, 0.0)
+        result[bucket.start] = curtailment
+    return result
 
 
 def summary_for_decisions(decisions: list[MarketDecision]) -> dict[str, float | int | str]:

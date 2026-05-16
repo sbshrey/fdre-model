@@ -45,7 +45,7 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 13. Add compliance and forecast-derived metrics.
   - Implement `P1-P5`, 90% monthly peak compliance, annual CUF, 30-day peak forecast, and 365-day generation forecast metrics.
   - Store these metrics on each decision cycle and expose them on the live board.
-- [ ] 14. Implement workbook non-peak rule cases.
+- [x] 14. Implement workbook non-peak rule cases.
   - Cases 2/3/4/5/7: forecast-driven BESS charging, PPA-vs-merchant tariff ordering, and residual BESS/merchant behavior.
 - [ ] 15. Implement workbook peak rule cases.
   - Cases 6/7 plus Clause 1/iii merchant-for-peak behavior using live peak power and monthly compliance state.
@@ -80,3 +80,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Ran end-to-end regression, hosted health, local UI smoke, and workbook comparison; captured workbook gaps in docs/e2e_gap_analysis_2026-05-16.md and added backlog items 12-18.
 - 2026-05-16: Item 12 completed with a workbook variable/case registry for `M`, `G`, `C`, `T`, `Cap`, `F`, `P`, and case IDs, surfaced on Assumptions and Rules.
 - 2026-05-16: Item 13 completed with P1-P5, monthly 90% peak compliance, 30-day peak forecast, annual generation, and annual CUF metrics stored on each decision cycle and shown on the Live Board.
+- 2026-05-16: Item 14 completed with enabled non-peak workbook dispatch for cases 2/3/4/5/7, using forecast curtailment, BESS headroom, and T1-vs-T2 tariff ordering.

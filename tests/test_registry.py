@@ -13,8 +13,8 @@ def test_workbook_variable_registry_maps_core_notes_codes_to_config_values() -> 
     assert by_code["G2"]["current_value"] == "162"
     assert by_code["T1"]["current_value"] == "6"
     assert by_code["Cap10"]["current_value"] == "150"
-    assert by_code["P1"]["status"] == "planned"
-    assert by_code["P2"]["status"] == "partial"
+    assert by_code["P1"]["status"] == "implemented"
+    assert by_code["P2"]["status"] == "implemented"
 
 
 def test_workbook_case_registry_covers_peak_non_peak_and_procurement_cases() -> None:

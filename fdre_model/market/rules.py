@@ -16,6 +16,15 @@ DEFAULT_RULES: tuple[RuleDefinition, ...] = (
         action={"type": "allocate_peak_power"},
     ),
     RuleDefinition(
+        rule_id="non_peak_workbook_dispatch",
+        name="Non-Peak Workbook Dispatch",
+        priority=15,
+        enabled=True,
+        description="Apply workbook non-peak cases 2/3/4/5/7 using forecast curtailment, BESS headroom, and T1-vs-T2 tariff order.",
+        condition={"is_peak": False, "min_residual_mwh": 0.000001, "no_prior_allocation": True},
+        action={"type": "allocate_non_peak_workbook"},
+    ),
+    RuleDefinition(
         rule_id="ppa_sale",
         name="PPA Sale",
         priority=20,
@@ -119,6 +128,7 @@ class RuleContext:
         ppa_tariff: float,
         peak_tariff: float,
         penalty_multiplier: float,
+        forecast_curtailment_mwh_by_start: dict[object, float] | None = None,
     ) -> None:
         self.ppa_cap_mwh = float(ppa_cap_mwh)
         self.merchant_cap_mwh = float(merchant_cap_mwh)
@@ -131,6 +141,7 @@ class RuleContext:
         self.ppa_tariff = float(ppa_tariff)
         self.peak_tariff = float(peak_tariff)
         self.penalty_multiplier = float(penalty_multiplier)
+        self.forecast_curtailment_mwh_by_start = forecast_curtailment_mwh_by_start or {}
 
 
 def evaluate_rules(
@@ -143,6 +154,7 @@ def evaluate_rules(
     ordered = sorted(rules, key=lambda item: (item.priority, item.rule_id))
     residual_allocators: list[str] = []
     for rule in ordered:
+        condition = _rule_condition(rule)
         if not rule.enabled:
             decision.skipped_rule_ids.append(f"{rule.rule_id}:disabled")
             continue
@@ -151,13 +163,13 @@ def evaluate_rules(
             decision,
             state,
             context,
-            _without_residual_conditions(rule.condition),
+            _without_residual_conditions(condition),
         ):
             blockers = ",".join(residual_allocators) if residual_allocators else "none"
             decision.skipped_rule_ids.append(f"{rule.rule_id}:conflict:residual_allocated_by={blockers}")
             decision.audit_trace.append(f"{rule.rule_id}: conflict residual already allocated by {blockers}")
             continue
-        if not _condition_matches(decision, state, context, rule.condition):
+        if not _condition_matches(decision, state, context, condition):
             decision.skipped_rule_ids.append(f"{rule.rule_id}:condition_false")
             decision.audit_trace.append(f"{rule.rule_id}: condition_false")
             continue
@@ -165,6 +177,8 @@ def evaluate_rules(
 
         if action_type == "allocate_peak_power":
             _apply_peak_power(decision, state, context, rule.rule_id)
+        elif action_type == "allocate_non_peak_workbook":
+            _apply_non_peak_workbook_dispatch(decision, state, context, rule.rule_id)
         elif action_type == "sell_ppa":
             _apply_ppa_sale(decision, context, rule.rule_id)
         elif action_type == "sell_merchant":
@@ -198,6 +212,7 @@ def _action_type(rule: RuleDefinition) -> str:
         return action_type
     return {
         "peak_power_obligation": "allocate_peak_power",
+        "non_peak_workbook_dispatch": "allocate_non_peak_workbook",
         "ppa_sale": "sell_ppa",
         "merchant_sale": "sell_merchant",
         "bess_charge": "charge_bess",
@@ -205,8 +220,16 @@ def _action_type(rule: RuleDefinition) -> str:
     }.get(rule.rule_id, "unknown")
 
 
+def _rule_condition(rule: RuleDefinition) -> dict[str, object]:
+    if rule.condition:
+        return rule.condition
+    defaults = {item.rule_id: item for item in DEFAULT_RULES}
+    default = defaults.get(rule.rule_id)
+    return default.condition if default is not None else {}
+
+
 def _requires_residual(action_type: str) -> bool:
-    return action_type in {"sell_ppa", "sell_merchant", "charge_bess", "curtail"}
+    return action_type in {"allocate_non_peak_workbook", "sell_ppa", "sell_merchant", "charge_bess", "curtail"}
 
 
 def _without_residual_conditions(condition: dict[str, object]) -> dict[str, object]:
@@ -250,6 +273,16 @@ def _condition_matches(
             matched = state.bess_soc_mwh < context.bess_capacity_mwh * _float_value(expected, context)
         elif key == "soc_above_fraction":
             matched = state.bess_soc_mwh > context.bess_capacity_mwh * _float_value(expected, context)
+        elif key == "no_prior_allocation":
+            prior_mwh = (
+                decision.peak_power_sale_mwh
+                + decision.ppa_sale_mwh
+                + decision.merchant_sale_mwh
+                + decision.bess_charge_mwh
+                + decision.bess_discharge_mwh
+                + decision.curtailment_mwh
+            )
+            matched = (prior_mwh <= 0.000001) is _bool_value(expected)
         else:
             matched = False
         if not matched:
@@ -304,58 +337,148 @@ def _apply_peak_power(decision: MarketDecision, state: OperatingState, context: 
         decision.revenue_value += decision.peak_power_sale_mwh * context.peak_tariff
 
 
-def _apply_ppa_sale(decision: MarketDecision, context: RuleContext, rule_id: str) -> None:
-    if decision.residual_mwh <= 0.0:
+def _apply_non_peak_workbook_dispatch(
+    decision: MarketDecision,
+    state: OperatingState,
+    context: RuleContext,
+    rule_id: str,
+) -> None:
+    if decision.is_peak or decision.residual_mwh <= 0.0:
         return
-    allocated = min(decision.residual_mwh, context.ppa_cap_mwh)
+
+    p1_curtailment = float(context.forecast_curtailment_mwh_by_start.get(decision.interval_start, 0.0))
+    raw_headroom = _bess_raw_headroom_mwh(state, context)
+    if raw_headroom <= 0.000001:
+        case_id = "case7_sufficient_bess"
+        charge_first = False
+    elif p1_curtailment >= raw_headroom:
+        case_id = "case2_forecast_curtailment_covers_bess"
+        charge_first = False
+    else:
+        case_id = "case3_charge_bess_first"
+        charge_first = True
+
+    sale_order = ["ppa", "merchant"] if context.ppa_tariff >= decision.merchant_price else ["merchant", "ppa"]
+    allocations = {"ppa": 0.0, "merchant": 0.0, "bess_charge": 0.0, "curtailment": 0.0}
+
+    if charge_first:
+        allocations["bess_charge"] += _allocate_bess_charge(decision, state, context)
+    for market in sale_order:
+        if market == "ppa":
+            allocations["ppa"] += _allocate_ppa(decision, context)
+        else:
+            allocations["merchant"] += _allocate_merchant(decision, context)
+    if not charge_first:
+        allocations["bess_charge"] += _allocate_bess_charge(decision, state, context)
+    allocations["curtailment"] += _allocate_curtailment(decision)
+
+    if sum(allocations.values()) <= 0.000001:
+        return
+
+    decision.applied_rule_ids.append(rule_id)
+    decision.audit_trace.append(
+        (
+            f"{rule_id}: {case_id}, "
+            f"p1_forecast_curtailment={p1_curtailment:.3f}, "
+            f"bess_raw_headroom={raw_headroom:.3f}, "
+            f"tariff_order={'>'.join(sale_order)}, "
+            f"ppa={allocations['ppa']:.3f}, "
+            f"merchant={allocations['merchant']:.3f}, "
+            f"bess_charge={allocations['bess_charge']:.3f}, "
+            f"curtailment={allocations['curtailment']:.3f}"
+        )
+    )
+
+
+def _apply_ppa_sale(decision: MarketDecision, context: RuleContext, rule_id: str) -> None:
+    allocated = _allocate_ppa(decision, context)
     if allocated <= 0.0:
         return
-    decision.ppa_sale_mwh += allocated
-    decision.residual_mwh -= allocated
-    decision.revenue_value += allocated * context.ppa_tariff
     decision.applied_rule_ids.append(rule_id)
     decision.audit_trace.append(f"{rule_id}: ppa_sale={allocated:.3f}")
 
 
 def _apply_merchant_sale(decision: MarketDecision, context: RuleContext, rule_id: str) -> None:
-    if decision.residual_mwh <= 0.0:
-        return
-    allocated = min(decision.residual_mwh, context.merchant_cap_mwh)
+    allocated = _allocate_merchant(decision, context)
     if allocated <= 0.0:
         return
-    decision.merchant_sale_mwh += allocated
-    decision.residual_mwh -= allocated
-    decision.revenue_value += allocated * decision.merchant_price
     decision.applied_rule_ids.append(rule_id)
     decision.audit_trace.append(f"{rule_id}: merchant_sale={allocated:.3f}")
 
 
 def _apply_bess_charge(decision: MarketDecision, state: OperatingState, context: RuleContext, rule_id: str) -> None:
-    if decision.residual_mwh <= 0.0:
-        return
-    headroom = max(context.bess_capacity_mwh - state.bess_soc_mwh, 0.0)
-    if headroom <= 0.0:
-        return
-    loss_factor = max(1.0 - context.charge_loss_fraction, 0.0)
-    raw_charge_limit_by_headroom = headroom / loss_factor if loss_factor > 0.0 else headroom
-    raw_charge = min(decision.residual_mwh, context.bess_charge_limit_mwh, raw_charge_limit_by_headroom)
+    raw_charge = _allocate_bess_charge(decision, state, context)
     if raw_charge <= 0.0:
         return
-    net_charge = raw_charge * loss_factor
-    decision.bess_charge_mwh += raw_charge
-    state.bess_soc_mwh = min(state.bess_soc_mwh + net_charge, context.bess_capacity_mwh)
-    decision.residual_mwh -= raw_charge
     decision.applied_rule_ids.append(rule_id)
+    net_charge = raw_charge * max(1.0 - context.charge_loss_fraction, 0.0)
     decision.audit_trace.append(f"{rule_id}: raw_charge={raw_charge:.3f}, net_soc_add={net_charge:.3f}")
 
 
 def _apply_curtailment(decision: MarketDecision, rule_id: str) -> None:
-    if decision.residual_mwh <= 0.0:
+    curtailed = _allocate_curtailment(decision)
+    if curtailed <= 0.0:
         return
-    decision.curtailment_mwh += decision.residual_mwh
-    decision.audit_trace.append(f"{rule_id}: curtailed={decision.residual_mwh:.3f}")
-    decision.residual_mwh = 0.0
+    decision.audit_trace.append(f"{rule_id}: curtailed={curtailed:.3f}")
     decision.applied_rule_ids.append(rule_id)
+
+
+def _allocate_ppa(decision: MarketDecision, context: RuleContext) -> float:
+    if decision.residual_mwh <= 0.0:
+        return 0.0
+    available_cap = max(context.ppa_cap_mwh - decision.ppa_sale_mwh, 0.0)
+    allocated = min(decision.residual_mwh, available_cap)
+    if allocated <= 0.0:
+        return 0.0
+    decision.ppa_sale_mwh += allocated
+    decision.residual_mwh -= allocated
+    decision.revenue_value += allocated * context.ppa_tariff
+    return allocated
+
+
+def _allocate_merchant(decision: MarketDecision, context: RuleContext) -> float:
+    if decision.residual_mwh <= 0.0:
+        return 0.0
+    available_cap = max(context.merchant_cap_mwh - decision.merchant_sale_mwh, 0.0)
+    allocated = min(decision.residual_mwh, available_cap)
+    if allocated <= 0.0:
+        return 0.0
+    decision.merchant_sale_mwh += allocated
+    decision.residual_mwh -= allocated
+    decision.revenue_value += allocated * decision.merchant_price
+    return allocated
+
+
+def _allocate_bess_charge(decision: MarketDecision, state: OperatingState, context: RuleContext) -> float:
+    if decision.residual_mwh <= 0.0:
+        return 0.0
+    raw_headroom = _bess_raw_headroom_mwh(state, context)
+    if raw_headroom <= 0.0:
+        return 0.0
+    remaining_charge_limit = max(context.bess_charge_limit_mwh - decision.bess_charge_mwh, 0.0)
+    raw_charge = min(decision.residual_mwh, remaining_charge_limit, raw_headroom)
+    if raw_charge <= 0.0:
+        return 0.0
+    net_charge = raw_charge * max(1.0 - context.charge_loss_fraction, 0.0)
+    decision.bess_charge_mwh += raw_charge
+    state.bess_soc_mwh = min(state.bess_soc_mwh + net_charge, context.bess_capacity_mwh)
+    decision.residual_mwh -= raw_charge
+    return raw_charge
+
+
+def _allocate_curtailment(decision: MarketDecision) -> float:
+    if decision.residual_mwh <= 0.0:
+        return 0.0
+    curtailed = decision.residual_mwh
+    decision.curtailment_mwh += curtailed
+    decision.residual_mwh = 0.0
+    return curtailed
+
+
+def _bess_raw_headroom_mwh(state: OperatingState, context: RuleContext) -> float:
+    headroom = max(context.bess_capacity_mwh - state.bess_soc_mwh, 0.0)
+    loss_factor = max(1.0 - context.charge_loss_fraction, 0.0)
+    return headroom / loss_factor if loss_factor > 0.0 else headroom
 
 
 def _recommended_market(decision: MarketDecision) -> str:
