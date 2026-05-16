@@ -17,6 +17,7 @@ from fdre_model.config import AppConfig, save_config
 from fdre_model.exports import write_decision_artifacts
 from fdre_model.market.aggregation import build_time_buckets, parse_interval, validate_csv_text
 from fdre_model.market.engine import build_decisions, parse_active_input_texts, summary_for_decisions
+from fdre_model.market.metrics import workbook_metric_summary
 from fdre_model.market.models import (
     AppUser,
     DecisionCycle,
@@ -452,6 +453,7 @@ class LocalWorkspaceStore:
             decision.audit_trace.append(f"model_versions={model_versions}")
         source_health = self.source_health(state, now=effective_now, buckets=buckets)
         summary = summary_for_decisions(decisions)
+        summary.update(workbook_metric_summary(config, inputs, decisions, buckets, now=effective_now))
         summary.update(_window_summary_values(buckets, effective_now, custom=window_start is not None or window_end is not None))
         summary.update(_source_health_summary(source_health))
         summary.update(_model_version_summary_values(model_versions))

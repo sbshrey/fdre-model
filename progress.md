@@ -42,7 +42,7 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 12. Add workbook-aligned variable registry.
   - Map `M`, `G`, `C`, `T`, `Cap`, `P`, and case identifiers from the `Notes` sheet into named app assumptions and rule inputs.
   - Surface the registry in assumptions/rules so workbook language and app language stay auditable.
-- [ ] 13. Add compliance and forecast-derived metrics.
+- [x] 13. Add compliance and forecast-derived metrics.
   - Implement `P1-P5`, 90% monthly peak compliance, annual CUF, 30-day peak forecast, and 365-day generation forecast metrics.
   - Store these metrics on each decision cycle and expose them on the live board.
 - [ ] 14. Implement workbook non-peak rule cases.
@@ -79,3 +79,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Added Auth0 user directory fetch, automatic FDRE activation for new Auth0 users, and first-login auto-provisioning while preserving explicit deactivation.
 - 2026-05-16: Ran end-to-end regression, hosted health, local UI smoke, and workbook comparison; captured workbook gaps in docs/e2e_gap_analysis_2026-05-16.md and added backlog items 12-18.
 - 2026-05-16: Item 12 completed with a workbook variable/case registry for `M`, `G`, `C`, `T`, `Cap`, `F`, `P`, and case IDs, surfaced on Assumptions and Rules.
+- 2026-05-16: Item 13 completed with P1-P5, monthly 90% peak compliance, 30-day peak forecast, annual generation, and annual CUF metrics stored on each decision cycle and shown on the Live Board.

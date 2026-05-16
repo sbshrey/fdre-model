@@ -70,6 +70,9 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Decision Cycle" in live.data
     assert b"Source Health" in live.data
     assert b"Operations Alerts" in live.data
+    assert b"Workbook Metrics" in live.data
+    assert b"P1 forecast curtailment" in live.data
+    assert b"Annual CUF" in live.data
     assert b"Why" in live.data
     assert b"default 6 actual + 1 live + 24 forecast = 31" in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data

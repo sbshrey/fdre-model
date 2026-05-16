@@ -41,6 +41,7 @@ Implemented well:
 - Versioned inputs for solar, wind, BESS SOC/SOH state, T2 pricing, and peak schedule.
 - Assumption UI for core capacities, tariffs, BESS losses, peak hours, and operating window.
 - Rule priority ordering, enable/disable, conflict trace, and row-level why explanation.
+- Workbook-aligned variable registry and decision-cycle forecast/compliance metrics for `P1-P5`, monthly peak compliance, annual generation, annual CUF, and 30-day peak forecast.
 - Core v1 allocation: peak obligation first in peak hours, then PPA, merchant, BESS charge, curtailment.
 - Decision-cycle artifacts and audit metadata.
 - Auth0 login and default-active Auth0 user sync.
@@ -79,9 +80,9 @@ The workbook uses derived forecast parameters:
 - `P5`: live generation plus 365-day generation forecast.
 - `Forecast30D(Cap9)` and `365D(Generation)`.
 
-The app only classifies intervals as actual/live/forecast and aggregates source values into the selected rolling window.
+Status update: implemented after this review. Each decision cycle now stores workbook-derived `P1-P5`, 30-day peak forecast, and 365-day generation metrics, and the Live Board shows them in a Workbook Metrics panel.
 
-Impact: forecast-aware rules cannot make the same decisions as the workbook.
+Remaining gap: these metrics are visible and exported, but the non-peak and peak allocation rules still need to consume them for workbook-parity decisions.
 
 ### 4. Compliance Calculations Are Placeholders
 
@@ -90,9 +91,9 @@ Impact: forecast-aware rules cannot make the same decisions as the workbook.
 - `90% Peak Power`
 - `CUF of Plant`
 
-The app has disabled monitor placeholders for annual CUF and monthly compliance, but no calculations that feed allocation decisions.
+Status update: implemented after this review. Monthly 90% peak compliance, monthly peak deficit, annual generation, and annual CUF are now calculated on every decision cycle.
 
-Impact: the system cannot yet decide merchant sale beyond capacity, procurement, or penalty minimization based on compliance status.
+Remaining gap: compliance values do not yet drive merchant sale beyond capacity, procurement, or penalty minimization decisions.
 
 ### 5. Non-Peak Rule Cases Are Only Partially Implemented
 
@@ -161,9 +162,8 @@ Impact: changes can be correct against code behavior while still drifting from t
 ## Recommended Work Order
 
 1. Add a workbook-aligned variable registry and expose it in assumptions/rules.
-2. Add compliance and forecast-derived metrics: `P1-P5`, 90% monthly peak compliance, annual CUF, 30-day and 365-day views.
-3. Implement non-peak cases 2/3/4/5/7.
-4. Implement peak cases 6/7 and Clause 1/iii merchant-for-peak logic.
-5. Add workbook-complete BESS behavior: degradation, SOH capacity adjustment, C-rate, residual discharge, and arbitrage.
-6. Implement merchant buy/procurement rules for penalty minimization and annual CUF.
-7. Add workbook parity tests using representative rows from `MODEL v2`.
+2. Implement non-peak cases 2/3/4/5/7 using the workbook metrics now available.
+3. Implement peak cases 6/7 and Clause 1/iii merchant-for-peak logic.
+4. Add workbook-complete BESS behavior: degradation, SOH capacity adjustment, C-rate, residual discharge, and arbitrage.
+5. Implement merchant buy/procurement rules for penalty minimization and annual CUF.
+6. Add workbook parity tests using representative rows from `MODEL v2`.

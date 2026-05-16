@@ -94,6 +94,9 @@ def test_decision_cycle_records_input_versions_and_artifacts(tmp_path: Path) -> 
     assert cycle.artifact_paths["workbook"].exists()
     assert cycle.artifact_paths["model_versions_json"].exists()
     assert cycle.summary["rows"] > 0
+    assert "p1_forecast_22h_curtailment_mwh" in cycle.summary
+    assert "p3_monthly_peak_90_deficit_mwh" in cycle.summary
+    assert "annual_cuf_pct" in cycle.summary
     assert cycle.summary["assumption_version_id"] == cycle.model_versions["assumptions"]
     assert cycle.summary["rule_version_id"] == cycle.model_versions["rules"]
     assert cycle.source_health

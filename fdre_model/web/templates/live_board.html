@@ -104,6 +104,27 @@
   <div><strong>{{ "%.1f"|format(summary.shortfall_mwh or 0) }}</strong><span>Shortfall MWh</span></div>
 </section>
 
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">Compliance Forecast</p>
+      <h2>Workbook Metrics</h2>
+      <p class="muted">Decision-cycle metrics behind P1-P5, peak compliance, and annual CUF rule packs.</p>
+    </div>
+    <span class="pill">live {{ summary.metrics_live_interval or window.live_at }}</span>
+  </div>
+  <div class="metric-grid">
+    <div><strong>{{ "%.1f"|format(summary.p1_forecast_22h_curtailment_mwh or 0) }}</strong><span>P1 forecast curtailment MWh</span></div>
+    <div><strong>{{ "%.1f"|format(summary.p2_live_curtailment_mwh or 0) }}</strong><span>P2 live curtailment MWh</span></div>
+    <div><strong>{{ "%.1f"|format(summary.p3_monthly_peak_90_deficit_mwh or 0) }}</strong><span>P3 monthly peak deficit MWh</span></div>
+    <div><strong>{{ "%.1f"|format(summary.p4_annual_ppa_generation_5pct_mwh or 0) }}</strong><span>P4 5% annual PPA MWh</span></div>
+    <div><strong>{{ "%.1f"|format(summary.p5_365d_generation_mwh or 0) }}</strong><span>P5 365D generation MWh</span></div>
+    <div><strong>{{ "%.1f"|format(summary.monthly_peak_90_compliance_pct or 0) }}%</strong><span>90% peak compliance</span></div>
+    <div><strong>{{ "%.1f"|format(summary.forecast_30d_peak_possible_mwh or 0) }}</strong><span>30D peak forecast MWh</span></div>
+    <div><strong>{{ "%.1f"|format(summary.annual_cuf_pct or 0) }}%</strong><span>Annual CUF</span></div>
+  </div>
+</section>
+
 <section class="source-health">
   <div class="section-head">
     <div>

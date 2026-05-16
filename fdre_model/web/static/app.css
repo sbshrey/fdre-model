@@ -240,7 +240,14 @@ button.ghost {
   margin-bottom: 18px;
 }
 
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .kpis div,
+.metric-grid div,
 .panel,
 .table-shell {
   background: var(--surface);
@@ -254,6 +261,11 @@ button.ghost {
   border-top: 4px solid var(--accent);
 }
 
+.metric-grid div {
+  padding: 12px;
+  background: var(--surface-raised);
+}
+
 .kpis strong {
   display: block;
   color: var(--ink);
@@ -261,8 +273,21 @@ button.ghost {
   line-height: 1.05;
 }
 
+.metric-grid strong {
+  display: block;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
 .kpis span {
   color: var(--muted);
+}
+
+.metric-grid span {
+  color: var(--muted);
+  display: block;
+  line-height: 1.3;
 }
 
 .source-health {
@@ -910,6 +935,7 @@ textarea {
   }
 
   .kpis,
+  .metric-grid,
   .meta-grid,
   .health-grid,
   .ops-grid,
