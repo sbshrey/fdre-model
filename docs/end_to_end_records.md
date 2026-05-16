@@ -15,7 +15,7 @@ Implemented user surfaces:
 - Rule Admin: admin users can enable/disable rules, change priority, and edit JSON conditions/actions.
 - Assumptions: admin-managed capacities, tariffs, losses, peak hours, and operating-window settings.
 - Decision History: each recalculation is stored as a `DecisionCycle` with artifacts and audit references.
-- User Admin: admin-managed app users and Auth0 Management API integration for create/invite/reset/block/delete identity actions.
+- User Admin: Auth0-sourced users are active by default, admins can deactivate/reactivate FDRE workspace access, and identity creation/reset/deletion stays in Auth0.
 - Hosted deployment: Elastic Beanstalk app with S3/DynamoDB persistence support and workspace isolation.
 
 Implemented outputs:

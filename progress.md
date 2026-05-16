@@ -39,6 +39,22 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 11. Auto-fetch Auth0 users and default them to active FDRE access.
   - Users added in Auth0 are synced as active FDRE operators by default.
   - Explicit FDRE deactivation remains a workspace-level deny until an admin reactivates access.
+- [ ] 12. Add workbook-aligned variable registry.
+  - Map `M`, `G`, `C`, `T`, `Cap`, `P`, and case identifiers from the `Notes` sheet into named app assumptions and rule inputs.
+  - Surface the registry in assumptions/rules so workbook language and app language stay auditable.
+- [ ] 13. Add compliance and forecast-derived metrics.
+  - Implement `P1-P5`, 90% monthly peak compliance, annual CUF, 30-day peak forecast, and 365-day generation forecast metrics.
+  - Store these metrics on each decision cycle and expose them on the live board.
+- [ ] 14. Implement workbook non-peak rule cases.
+  - Cases 2/3/4/5/7: forecast-driven BESS charging, PPA-vs-merchant tariff ordering, and residual BESS/merchant behavior.
+- [ ] 15. Implement workbook peak rule cases.
+  - Cases 6/7 plus Clause 1/iii merchant-for-peak behavior using live peak power and monthly compliance state.
+- [ ] 16. Complete BESS dispatch modeling.
+  - Apply BESS degradation/SOH to usable capacity, enforce C-rate constraints, and add residual discharge/arbitrage behavior.
+- [ ] 17. Implement merchant buy and RE procurement rule packs.
+  - Penalty minimization, annual CUF + 10%, 5% annual procurement cap, and GDAM/other market placeholders.
+- [ ] 18. Add workbook parity tests.
+  - Build representative `MODEL v2` scenarios and assert app allocations match workbook rules for peak and non-peak cases.
 
 ## Verification Log
 
@@ -61,3 +77,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Added Live Board preferred range controls with custom start/live/end preview cycles and default 31-row operating window display.
 - 2026-05-16: Removed portal-side Auth0 creation, password reset, identity deletion, and role-edit UI; Users now only activates or deactivates workspace access.
 - 2026-05-16: Added Auth0 user directory fetch, automatic FDRE activation for new Auth0 users, and first-login auto-provisioning while preserving explicit deactivation.
+- 2026-05-16: Ran end-to-end regression, hosted health, local UI smoke, and workbook comparison; captured workbook gaps in docs/e2e_gap_analysis_2026-05-16.md and added backlog items 12-18.
