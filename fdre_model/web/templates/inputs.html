@@ -19,6 +19,7 @@
         {% if item.active %}
           <div class="actions">
             <span class="pill ok">Active {{ item.active.version_id }}</span>
+            <a class="button ghost" href="{{ url_for('edit_input', dataset_key=item.spec.key) }}">Edit Active</a>
             <a class="button ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=item.active.version_id) }}">Download Active CSV</a>
           </div>
         {% endif %}

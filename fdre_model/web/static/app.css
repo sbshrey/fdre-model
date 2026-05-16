@@ -801,6 +801,55 @@ textarea {
   justify-content: flex-end;
 }
 
+.input-window-form {
+  margin-bottom: 14px;
+}
+
+.input-window-actions {
+  grid-column: auto;
+  align-items: flex-end;
+}
+
+.editor-shell {
+  max-height: 560px;
+}
+
+.editor-table th,
+.editor-table td {
+  vertical-align: middle;
+}
+
+.editor-table th:first-child,
+.editor-table td:first-child {
+  min-width: 190px;
+}
+
+.editor-table input,
+.editor-table select {
+  min-width: 120px;
+  padding: 6px 8px;
+}
+
+.editor-table select {
+  min-width: 140px;
+}
+
+.paste-editor textarea {
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--surface-raised);
+}
+
 @media (max-width: 900px) {
   .topbar,
   .page-header,
@@ -863,5 +912,9 @@ textarea {
 
   .why-detail {
     max-width: 78vw;
+  }
+
+  .input-window-actions {
+    grid-column: 1 / -1;
   }
 }

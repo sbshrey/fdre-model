@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import logging
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from flask import Flask, Response, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from fdre_model.config import AppConfig
-from fdre_model.market.models import RuleDefinition
+from fdre_model.market.aggregation import parse_csv_text
+from fdre_model.market.models import InputSpec, RuleDefinition
 from fdre_model.storage.hosted import HostedPersistence
 from fdre_model.storage.local import INPUT_SPECS, LocalWorkspaceStore
 from fdre_model.web.auth import (
@@ -279,6 +284,69 @@ def create_app(
             return redirect(url_for("inputs_page"))
         download_name = f"fdre_{version.dataset_key}_{version.version_id}.csv"
         return send_file(version.raw_path, as_attachment=True, download_name=download_name, mimetype="text/csv")
+
+    @app.get("/inputs/<dataset_key>/edit")
+    def edit_input(dataset_key: str) -> str | Response:
+        state = workspace()
+        try:
+            spec = _input_spec(dataset_key)
+            version = store.active_version(state, dataset_key)
+            if version is None or version.raw_path is None:
+                flash("No active input version is available to edit.", "error")
+                return redirect(url_for("inputs_page"))
+            rows = _canonical_input_rows(version.raw_path.read_text(encoding="utf-8"), spec)
+            start, end = _input_edit_window(rows, store.load_config(state), request.args)
+            visible_rows = _rows_in_window(rows, start, end)
+        except Exception as exc:
+            flash(f"Input editor failed: {exc}", "error")
+            return redirect(url_for("inputs_page"))
+        return render_template(
+            "input_edit.html",
+            active_page="inputs",
+            spec=spec,
+            active=version,
+            rows=visible_rows,
+            value_headers=_value_headers(spec),
+            start=_datetime_local(start),
+            end=_datetime_local(end),
+            row_count=len(rows),
+        )
+
+    @app.post("/inputs/<dataset_key>/edit")
+    def save_input_edit(dataset_key: str) -> Response:
+        state = workspace()
+        start_text = request.form.get("start", "")
+        end_text = request.form.get("end", "")
+        try:
+            spec = _input_spec(dataset_key)
+            version = store.active_version(state, dataset_key)
+            if version is None or version.raw_path is None:
+                raise ValueError("No active input version is available to edit.")
+            current_rows = _canonical_input_rows(version.raw_path.read_text(encoding="utf-8"), spec)
+            pasted_csv = (request.form.get("paste_csv") or "").strip()
+            if pasted_csv:
+                replacement_rows = _canonical_input_rows(pasted_csv, spec)
+                merged_rows, changed_count = _merge_replacement_rows(current_rows, replacement_rows, require_existing=True)
+                source_type = "in_app_paste"
+            else:
+                replacement_rows = _form_input_rows(request.form, spec)
+                merged_rows, changed_count = _merge_replacement_rows(current_rows, replacement_rows, require_existing=True)
+                source_type = "in_app_table_edit"
+            new_text = _canonical_input_csv(merged_rows, spec)
+            new_version = store.create_version(
+                state,
+                dataset_key,
+                new_text,
+                source_type=source_type,
+                original_name=f"editor:{dataset_key}:{version.version_id}.csv",
+                user_email=current_user_email(),
+                activate=True,
+            )
+            flash(f"Saved {changed_count} edited rows as active version {new_version.version_id}.", "success")
+        except Exception as exc:
+            flash(f"Input edit failed: {exc}", "error")
+        query = {key: value for key, value in {"start": start_text, "end": end_text}.items() if value}
+        return redirect(url_for("edit_input", dataset_key=dataset_key, **query))
 
     @app.post("/inputs/<dataset_key>/upload")
     def upload_input(dataset_key: str) -> Response:
@@ -662,6 +730,166 @@ def _same_email(first: str, second: str) -> bool:
 
 def _normalized_email(value: str) -> str:
     return value.strip().lower()
+
+
+def _input_spec(dataset_key: str) -> InputSpec:
+    for spec in INPUT_SPECS:
+        if spec.key == dataset_key:
+            return spec
+    raise ValueError(f"Unsupported input dataset: {dataset_key}")
+
+
+def _value_headers(spec: InputSpec) -> tuple[str, ...]:
+    return tuple(header for header in spec.expected_headers if header != "timestamp")
+
+
+def _canonical_input_rows(text: str, spec: InputSpec) -> list[dict[str, str]]:
+    parsed = parse_csv_text(text, dataset_kind=spec.kind)
+    generation_source_hours = _input_source_hours(parsed.rows) if spec.kind == "generation" else 1.0
+    rows: list[dict[str, str]] = []
+    for row in parsed.rows:
+        timestamp = row.get("timestamp")
+        if not isinstance(timestamp, datetime):
+            raise ValueError("Input row is missing a valid timestamp.")
+        canonical = {"timestamp": timestamp.isoformat(sep=" ")}
+        if spec.kind == "generation":
+            if "mwh" in row:
+                canonical["mwh"] = _format_input_number(row["mwh"])
+            elif "kw" in row:
+                canonical["mwh"] = _format_input_number(float(row["kw"]) * generation_source_hours / 1000.0)
+            else:
+                raise ValueError("Generation input rows need an MWh or kW value.")
+        elif spec.kind == "bess_state":
+            canonical["soc_mwh"] = _format_input_number(row.get("soc_mwh"))
+            canonical["soh_fraction"] = _format_input_number(row.get("soh_fraction"))
+        elif spec.kind == "price":
+            canonical["price"] = _format_input_number(row.get("price"))
+        elif spec.kind == "peak_schedule":
+            canonical["is_peak"] = "1" if bool(row.get("is_peak")) else "0"
+        else:
+            raise ValueError(f"Unsupported input dataset kind: {spec.kind}")
+        rows.append(canonical)
+    rows.sort(key=lambda item: _parse_input_datetime(item["timestamp"]))
+    return rows
+
+
+def _form_input_rows(form: Any, spec: InputSpec) -> list[dict[str, str]]:
+    timestamps = form.getlist("timestamp")
+    if not timestamps:
+        raise ValueError("No editable rows were submitted.")
+    value_headers = _value_headers(spec)
+    values_by_header = {header: form.getlist(header) for header in value_headers}
+    for header, values in values_by_header.items():
+        if len(values) != len(timestamps):
+            raise ValueError(f"Submitted {header} values do not match submitted timestamps.")
+    rows: list[dict[str, str]] = []
+    for index, raw_timestamp in enumerate(timestamps):
+        row = {"timestamp": _parse_input_datetime(raw_timestamp).isoformat(sep=" ")}
+        for header in value_headers:
+            row[header] = _clean_input_value(values_by_header[header][index], spec, header)
+        rows.append(row)
+    return rows
+
+
+def _merge_replacement_rows(
+    current_rows: list[dict[str, str]],
+    replacement_rows: list[dict[str, str]],
+    *,
+    require_existing: bool,
+) -> tuple[list[dict[str, str]], int]:
+    current_by_timestamp = {row["timestamp"]: dict(row) for row in current_rows}
+    changed_count = 0
+    for row in replacement_rows:
+        timestamp = row["timestamp"]
+        if require_existing and timestamp not in current_by_timestamp:
+            raise ValueError(f"Timestamp {timestamp} is not present in the active input. Upload a full CSV to add intervals.")
+        if current_by_timestamp.get(timestamp) != row:
+            changed_count += 1
+        current_by_timestamp[timestamp] = dict(row)
+    merged = list(current_by_timestamp.values())
+    merged.sort(key=lambda item: _parse_input_datetime(item["timestamp"]))
+    return merged, changed_count
+
+
+def _canonical_input_csv(rows: list[dict[str, str]], spec: InputSpec) -> str:
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=list(spec.expected_headers), lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({header: row.get(header, "") for header in spec.expected_headers})
+    return output.getvalue()
+
+
+def _input_edit_window(rows: list[dict[str, str]], config: AppConfig, args: Any) -> tuple[datetime, datetime]:
+    if not rows:
+        raise ValueError("Active input has no rows to edit.")
+    first_timestamp = _parse_input_datetime(rows[0]["timestamp"])
+    last_timestamp = _parse_input_datetime(rows[-1]["timestamp"])
+    default_start = _floor_hour(_local_now(config))
+    if default_start < first_timestamp or default_start > last_timestamp:
+        default_start = first_timestamp
+    start = _parse_optional_input_datetime(args.get("start")) or default_start
+    end = _parse_optional_input_datetime(args.get("end")) or (start + timedelta(hours=24))
+    if end <= start:
+        end = start + timedelta(hours=24)
+    return start, end
+
+
+def _rows_in_window(rows: list[dict[str, str]], start: datetime, end: datetime) -> list[dict[str, str]]:
+    return [
+        row
+        for row in rows
+        if start <= _parse_input_datetime(row["timestamp"]) < end
+    ]
+
+
+def _parse_optional_input_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    return _parse_input_datetime(text) if text else None
+
+
+def _parse_input_datetime(value: object) -> datetime:
+    text = str(value).strip().replace("T", " ")
+    parsed = datetime.fromisoformat(text)
+    return parsed.replace(tzinfo=None)
+
+
+def _datetime_local(value: datetime) -> str:
+    return value.strftime("%Y-%m-%dT%H:%M")
+
+
+def _local_now(config: AppConfig) -> datetime:
+    try:
+        return datetime.now(ZoneInfo(config.project.timezone)).replace(tzinfo=None)
+    except Exception:
+        return datetime.now()
+
+
+def _input_source_hours(rows: list[dict[str, object]]) -> float:
+    timestamps = sorted(row["timestamp"] for row in rows if isinstance(row.get("timestamp"), datetime))
+    if len(timestamps) < 2:
+        return 1.0
+    for index in range(len(timestamps) - 1):
+        seconds = (timestamps[index + 1] - timestamps[index]).total_seconds()
+        if seconds > 0:
+            return max(seconds / 3600.0, 1.0 / 60.0)
+    return 1.0
+
+
+def _floor_hour(value: datetime) -> datetime:
+    return value.replace(minute=0, second=0, microsecond=0)
+
+
+def _clean_input_value(value: object, spec: InputSpec, header: str) -> str:
+    if spec.kind == "peak_schedule" and header == "is_peak":
+        return "1" if str(value).strip().lower() in {"1", "true", "yes", "y", "peak"} else "0"
+    return _format_input_number(value)
+
+
+def _format_input_number(value: object) -> str:
+    number = float(value or 0.0)
+    text = f"{number:.6f}".rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _env_flag(name: str) -> bool:

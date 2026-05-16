@@ -27,6 +27,9 @@ This file tracks the known gaps between the current MVP and the expected live-re
   - Auto-refresh state, source health, alerts, filters, “why this market” drilldown, operator acknowledgement.
 - [x] 7. Harden ingestion validation.
   - Duplicate timestamps, missing intervals, irregular kW intervals, unit consistency, timezone handling, required rolling-window coverage.
+- [x] 8. Add easy in-app active input updates.
+  - Operators can edit a rolling time window or paste replacement CSV rows.
+  - Saves create new active input versions with user/source metadata instead of mutating prior versions.
 
 ## Verification Log
 
@@ -45,3 +48,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Added per-version input CSV downloads from the Inputs page for active and historical input versions.
 - 2026-05-16: Added Syncfusion EJ2 Grid progressive enhancement for app tables using CDN assets and an optional environment-provided license key.
 - 2026-05-16: Gated Syncfusion assets behind FDRE_SYNCFUSION_LICENSE_KEY so unlicensed hosted environments use native tables without the Syncfusion validation banner.
+- 2026-05-16: Added in-app active input editing for source rows and pasted CSV replacements, preserving immutable version history and active-version audit metadata.

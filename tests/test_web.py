@@ -66,6 +66,7 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert inputs.status_code == 200
     assert b"Solar Generation" in inputs.data
     assert b"input-versions-solar" in inputs.data
+    assert b"Edit Active" in inputs.data
 
     upload = client.post(
         "/inputs/solar/manual",
@@ -141,6 +142,67 @@ def test_input_versions_can_be_downloaded(tmp_path: Path) -> None:
     manual_download = client.get(manual_download_path.group(1).decode("utf-8"))
     assert manual_download.status_code == 200
     assert b"2026-04-01 12:00,30" in manual_download.data
+
+
+def test_active_input_can_be_edited_in_app_as_new_version(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    editor = client.get("/inputs/solar/edit?start=2026-01-01T06:00&end=2026-01-01T08:00")
+
+    assert editor.status_code == 200
+    assert b"Edit Solar Generation" in editor.data
+    assert b"2026-01-01 06:00:00" in editor.data
+    assert b"Save Edited Version" in editor.data
+    assert b'data-syncfusion-grid' not in editor.data
+
+    saved = client.post(
+        "/inputs/solar/edit",
+        data={
+            "start": "2026-01-01T06:00",
+            "end": "2026-01-01T08:00",
+            "timestamp": ["2026-01-01 06:00:00"],
+            "mwh": ["123.456"],
+        },
+        follow_redirects=True,
+    )
+
+    assert saved.status_code == 200
+    assert b"Saved 1 edited rows as active version" in saved.data
+    assert b"in_app_table_edit" in saved.data
+
+    download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', saved.data)
+    assert download_path is not None
+    downloaded = client.get(download_path.group(1).decode("utf-8"))
+
+    assert downloaded.status_code == 200
+    assert b"2026-01-01 06:00:00,123.456" in downloaded.data
+
+
+def test_peak_schedule_can_be_replaced_with_pasted_csv(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    saved = client.post(
+        "/inputs/peak_schedule/edit",
+        data={
+            "start": "2026-01-01T18:00",
+            "end": "2026-01-01T19:00",
+            "paste_csv": "timestamp,is_peak\n2026-01-01 18:00,0\n",
+        },
+        follow_redirects=True,
+    )
+
+    assert saved.status_code == 200
+    assert b"Saved 1 edited rows as active version" in saved.data
+    assert b"in_app_paste" in saved.data
+
+    download_path = re.search(rb'href="(/inputs/peak_schedule/download/[^"]+)"', saved.data)
+    assert download_path is not None
+    downloaded = client.get(download_path.group(1).decode("utf-8"))
+
+    assert downloaded.status_code == 200
+    assert b"2026-01-01 18:00:00,0" in downloaded.data
 
 
 def test_live_board_filters_and_acknowledgement_flow(tmp_path: Path) -> None:

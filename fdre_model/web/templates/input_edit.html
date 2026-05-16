@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ spec.label }} | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Input Editor</p>
+    <h1>Edit {{ spec.label }}</h1>
+    <p class="muted">Save changes as a new active input version. Previous versions remain available for audit and rollback.</p>
+  </div>
+  <div class="actions">
+    <a class="button ghost" href="{{ url_for('inputs_page') }}">Back to Inputs</a>
+    <a class="button ghost" href="{{ url_for('download_input', dataset_key=spec.key, version_id=active.version_id) }}">Download Active CSV</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Active Version</h2>
+      <p class="muted mono">{{ active.version_id }}</p>
+    </div>
+    <span class="pill ok">{{ active.source_type }}</span>
+  </div>
+  <div class="meta-grid">
+    <div><strong>Rows</strong><span>{{ row_count }}</span></div>
+    <div><strong>Coverage</strong><span>{{ active.coverage_start }} to {{ active.coverage_end }}</span></div>
+    <div><strong>Created By</strong><span>{{ active.user_email }}</span></div>
+    <div><strong>Expected CSV</strong><span>{{ spec.expected_headers | join(", ") }}</span></div>
+  </div>
+</section>
+
+<form method="get" class="panel form-grid input-window-form">
+  <label>
+    <span>Start</span>
+    <input type="datetime-local" name="start" value="{{ start }}">
+  </label>
+  <label>
+    <span>End</span>
+    <input type="datetime-local" name="end" value="{{ end }}">
+  </label>
+  <div class="form-actions input-window-actions">
+    <button type="submit">Load Window</button>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('save_input_edit', dataset_key=spec.key) }}" class="stack">
+  <input type="hidden" name="start" value="{{ start }}">
+  <input type="hidden" name="end" value="{{ end }}">
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Window Rows</h2>
+        <p class="muted">Edit interval values directly. Timestamps are locked so cadence and coverage stay consistent.</p>
+      </div>
+      <button type="submit">Save Edited Version</button>
+    </div>
+    {% if rows %}
+      <div class="table-shell editor-shell">
+        <table class="editor-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              {% for header in value_headers %}
+                <th>{{ header }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td class="mono">
+                  {{ row.timestamp }}
+                  <input type="hidden" name="timestamp" value="{{ row.timestamp }}">
+                </td>
+                {% for header in value_headers %}
+                  <td>
+                    {% if spec.kind == "peak_schedule" and header == "is_peak" %}
+                      <select name="{{ header }}" aria-label="{{ row.timestamp }} {{ header }}">
+                        <option value="1" {% if row[header] == "1" %}selected{% endif %}>Peak</option>
+                        <option value="0" {% if row[header] != "1" %}selected{% endif %}>Non-peak</option>
+                      </select>
+                    {% else %}
+                      <input type="number" step="any" name="{{ header }}" value="{{ row[header] }}" aria-label="{{ row.timestamp }} {{ header }}">
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state">No rows were found in this window. Change the start and end time to load editable rows.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel paste-editor">
+    <div class="panel-head">
+      <div>
+        <h2>Paste CSV Replacement</h2>
+        <p class="muted">Optional. If populated, pasted rows replace matching timestamps and the table edits above are ignored.</p>
+      </div>
+    </div>
+    <textarea name="paste_csv" rows="6" placeholder="{{ spec.expected_headers | join(',') }}"></textarea>
+    <div class="actions end">
+      <button type="submit">Save Pasted Version</button>
+    </div>
+  </section>
+</form>
+{% endblock %}
