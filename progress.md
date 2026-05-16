@@ -42,3 +42,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Added in-app FDRE user administration. Admin emails can come from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS; admins can add/deactivate workspace users and set operator/admin roles.
 - 2026-05-16: Added Auth0 Management API integration for admin-created users, invite/reset emails, Auth0 blocking on deactivation, and guarded Auth0 identity deletion.
 - 2026-05-16: Refreshed the portal theme using Digitised Energy visual cues: light grey shell, green energy accent, compact rectangular controls, and responsive branded header.
+- 2026-05-16: Added per-version input CSV downloads from the Inputs page for active and historical input versions.

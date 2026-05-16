@@ -91,6 +91,37 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Cycles" in history.data
 
 
+def test_input_versions_can_be_downloaded(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    inputs = client.get("/inputs")
+    assert inputs.status_code == 200
+    assert b"Download Active CSV" in inputs.data
+    assert b"Download" in inputs.data
+
+    seeded_download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', inputs.data)
+    assert seeded_download_path is not None
+    seeded_download = client.get(seeded_download_path.group(1).decode("utf-8"))
+    assert seeded_download.status_code == 200
+    assert seeded_download.headers["Content-Disposition"].startswith("attachment;")
+    assert "fdre_solar_" in seeded_download.headers["Content-Disposition"]
+    assert seeded_download.headers["Content-Type"].startswith("text/csv")
+    assert seeded_download.data.startswith(b"timestamp,mwh")
+
+    overridden = client.post(
+        "/inputs/solar/manual",
+        data={"csv_text": "timestamp,mwh\n2026-04-01 12:00,30\n", "source_type": "manual_1h"},
+        follow_redirects=True,
+    )
+    assert overridden.status_code == 200
+    manual_download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', overridden.data)
+    assert manual_download_path is not None
+    manual_download = client.get(manual_download_path.group(1).decode("utf-8"))
+    assert manual_download.status_code == 200
+    assert b"2026-04-01 12:00,30" in manual_download.data
+
+
 def test_live_board_filters_and_acknowledgement_flow(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()

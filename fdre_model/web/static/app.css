@@ -180,6 +180,10 @@ h2 {
   align-items: center;
 }
 
+.actions {
+  flex-wrap: wrap;
+}
+
 .actions.end {
   justify-content: flex-end;
   margin-top: 14px;
@@ -209,7 +213,8 @@ button:hover,
   color: #fff;
 }
 
-button.small {
+button.small,
+.button.small {
   min-height: 28px;
   padding: 4px 8px;
 }

@@ -264,6 +264,20 @@ def create_app(
             inputs.append({"spec": spec, "active": active, "versions": versions})
         return render_template("inputs.html", active_page="inputs", inputs=inputs)
 
+    @app.get("/inputs/<dataset_key>/download/<version_id>")
+    def download_input(dataset_key: str, version_id: str) -> Response:
+        state = workspace()
+        try:
+            version = store.get_version(state, dataset_key, version_id)
+        except Exception as exc:
+            flash(f"Input version not found: {exc}", "error")
+            return redirect(url_for("inputs_page"))
+        if version.raw_path is None or not version.raw_path.exists():
+            flash("Input file not found.", "error")
+            return redirect(url_for("inputs_page"))
+        download_name = f"fdre_{version.dataset_key}_{version.version_id}.csv"
+        return send_file(version.raw_path, as_attachment=True, download_name=download_name, mimetype="text/csv")
+
     @app.post("/inputs/<dataset_key>/upload")
     def upload_input(dataset_key: str) -> Response:
         state = workspace()
