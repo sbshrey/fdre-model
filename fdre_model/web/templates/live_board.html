@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Live Board | FDRE Market Operations{% endblock %}
+{% block head_extra %}
+  {% if active_page == "live" %}
+    <meta http-equiv="refresh" content="60">
+  {% endif %}
+{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Decision Cycle</p>
+    <h1>{{ cycle.cycle_id }}</h1>
+    <p class="muted">{{ cycle.window_start }} to {{ cycle.window_end }} · created {{ cycle.created_at }}</p>
+    <p class="muted">Workspace {{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</p>
+    <p class="muted">Auto-refresh 60s · {{ storage_backend }} storage</p>
+    <p class="muted mono">assumptions={{ cycle.model_versions.assumptions or "unversioned" }} · rules={{ cycle.model_versions.rules or "unversioned" }}</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="{{ url_for('recalculate_cycle') }}">
+      <button type="submit">Recalculate</button>
+    </form>
+    {% if acknowledgement %}
+      <span class="pill ok">Acknowledged</span>
+    {% endif %}
+    <a class="button ghost" href="{{ url_for('download_artifact', cycle_id=cycle.cycle_id, artifact_key='allocation_csv') }}">CSV</a>
+    <a class="button ghost" href="{{ url_for('download_artifact', cycle_id=cycle.cycle_id, artifact_key='workbook') }}">XLSX</a>
+  </div>
+</section>
+
+<section class="ops-grid">
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Operations Alerts</p>
+        <h2>Current Attention</h2>
+      </div>
+      <span class="pill">{{ rows|length }} / {{ total_rows }} rows</span>
+    </div>
+    <div class="alert-list">
+      {% for alert in alerts %}
+        <div class="alert alert-{{ alert.level }}">
+          <strong>{{ alert.title }}</strong>
+          <span>{{ alert.message }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Operator State</p>
+        <h2>Acknowledgement</h2>
+      </div>
+    </div>
+    {% if acknowledgement %}
+      <p class="muted">Acknowledged by {{ acknowledgement.user_email }} at {{ acknowledgement.acknowledged_at }}</p>
+      {% if acknowledgement.note %}
+        <p>{{ acknowledgement.note }}</p>
+      {% endif %}
+    {% else %}
+      <form method="post" action="{{ url_for('acknowledge_cycle', cycle_id=cycle.cycle_id) }}" class="ack-form">
+        <textarea name="note" rows="2" placeholder="Optional operator note"></textarea>
+        <button type="submit">Acknowledge Window</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="kpis">
+  <div><strong>{{ "%.1f"|format(summary.peak_power_sale_mwh or 0) }}</strong><span>Peak MWh</span></div>
+  <div><strong>{{ "%.1f"|format(summary.ppa_sale_mwh or 0) }}</strong><span>PPA MWh</span></div>
+  <div><strong>{{ "%.1f"|format(summary.merchant_sale_mwh or 0) }}</strong><span>Merchant MWh</span></div>
+  <div><strong>{{ "%.1f"|format(summary.shortfall_mwh or 0) }}</strong><span>Shortfall MWh</span></div>
+</section>
+
+<section class="source-health">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Input Freshness</p>
+      <h2>Source Health</h2>
+    </div>
+    <div class="health-counts">
+      <span class="pill ok">{{ summary.source_health_ok or 0 }} ok</span>
+      <span class="pill warning">{{ summary.source_health_warning or 0 }} warning</span>
+      <span class="pill critical">{{ summary.source_health_critical or 0 }} critical</span>
+    </div>
+  </div>
+  <div class="health-grid">
+    {% for health in cycle.source_health %}
+      <article class="health-card health-{{ health.status }}">
+        <div class="health-title">
+          <strong>{{ health.label }}</strong>
+          <span class="pill {{ health.status }}">{{ health.status }}</span>
+        </div>
+        <p>{{ health.message }}</p>
+        <div class="health-meta">
+          <span>{{ health.coverage_start or "missing" }}</span>
+          <span>{{ health.coverage_end or "missing" }}</span>
+          <span>{{ health.source_type or "unknown" }}</span>
+          <span>{{ health.row_count }} rows</span>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel filter-panel">
+  <form method="get" action="{{ url_for('live_board') }}" class="filter-form">
+    <label><span>Status</span><select name="status">
+      {% for value in ["all", "actual", "live", "forecast"] %}
+        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select></label>
+    <label><span>Peak</span><select name="peak">
+      <option value="all" {% if filters.peak == "all" %}selected{% endif %}>all</option>
+      <option value="peak" {% if filters.peak == "peak" %}selected{% endif %}>peak</option>
+      <option value="nonpeak" {% if filters.peak == "nonpeak" %}selected{% endif %}>non-peak</option>
+    </select></label>
+    <label><span>Market</span><select name="market">
+      <option value="all" {% if filters.market == "all" %}selected{% endif %}>all</option>
+      {% for market in market_options %}
+        <option value="{{ market }}" {% if filters.market == market %}selected{% endif %}>{{ market }}</option>
+      {% endfor %}
+    </select></label>
+    <label class="check-label">
+      <input type="checkbox" name="alerts" value="1" {% if filters.alerts %}checked{% endif %}>
+      <span>Alert rows only</span>
+    </label>
+    <div class="filter-actions">
+      <button type="submit">Apply</button>
+      <a class="button ghost" href="{{ url_for('live_board') }}">Clear</a>
+    </div>
+  </form>
+</section>
+
+<section class="table-shell">
+  <table>
+    <thead>
+      <tr>
+        <th>Interval</th>
+        <th>Status</th>
+        <th>Peak</th>
+        <th>Wind</th>
+        <th>Solar</th>
+        <th>Available</th>
+        <th>SOC Open</th>
+        <th>Peak Sale</th>
+        <th>PPA</th>
+        <th>Merchant</th>
+        <th>BESS +/-</th>
+        <th>Shortfall</th>
+        <th>Market</th>
+        <th>Rule</th>
+        <th>Why</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr class="status-{{ row.status }}">
+          <td>{{ row.interval_start }}</td>
+          <td><span class="pill">{{ row.status }}</span></td>
+          <td>{{ "Peak" if row.is_peak == "1" else "Non-peak" }}</td>
+          <td>{{ "%.1f"|format(row.wind_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.solar_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.available_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.bess_open_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.peak_power_sale_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.ppa_sale_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.merchant_sale_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.bess_charge_mwh|float - row.bess_discharge_mwh|float) }}</td>
+          <td>{{ "%.1f"|format(row.shortfall_mwh|float) }}</td>
+          <td>{{ row.recommended_market }}</td>
+          <td class="mono">{{ row.applied_rule_ids }}</td>
+          <td>
+            <details class="why-detail">
+              <summary>Why</summary>
+              <div>
+                <strong>Applied</strong>
+                <p class="mono">{{ row.applied_rule_ids or "none" }}</p>
+                <strong>Skipped</strong>
+                <p class="mono">{{ row.skipped_rule_ids or "none" }}</p>
+                <strong>Trace</strong>
+                <p class="mono wrap">{{ row.audit_trace or "none" }}</p>
+              </div>
+            </details>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

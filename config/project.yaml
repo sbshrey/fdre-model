@@ -1,0 +1,32 @@
+project:
+  name: FDRE Live Market Operations
+  timezone: Asia/Kolkata
+
+market_model:
+  interval: 1h
+  recent_hours: 6
+  forecast_hours: 24
+  charge_loss_fraction: 0.13
+  discharge_loss_fraction: 0.07
+  default_peak_hours: [18, 19, 20, 21]
+
+capacities:
+  wind_mwh: 211.2
+  solar_mwh: 162.0
+  bess_capacity_mwh: 100.0
+  bess_charge_limit_mwh: 50.0
+  bess_discharge_limit_mwh: 50.0
+  ppa_mwh: 150.0
+  merchant_mwh: 35.0
+  evacuation_mwh: 185.0
+  peak_power_mwh: 150.0
+
+tariffs:
+  ppa: 6.0
+  merchant_sell_default: 10.0
+  peak_power: 7.0
+  penalty_multiplier: 1.5
+
+state:
+  initial_bess_soc_mwh: 50.0
+  initial_bess_soh_fraction: 1.0

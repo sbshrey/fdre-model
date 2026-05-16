@@ -1,0 +1,13 @@
+{
+  "sample_year": 2026,
+  "source_repo": "/Users/shreybaheti/Library/CloudStorage/OneDrive-CargillInc/Documents/ShreyBaheti/seci-fdre-v-rfs-13-0014",
+  "sources": [
+    "data/Solar_2025-01-01_data_.csv",
+    "data/Wind_2025_01-01_data_.csv",
+    "data/seci_fdre_v_amendment_03_output_profile.csv",
+    "data/seci_fdre_v_amendment_03_output_profile_18_22.csv",
+    "config/project.yaml simulation.battery.degradation_per_cycle"
+  ],
+  "gap_fill": "Source generation was forward-filled minute by minute; minutes before first observation use 0.",
+  "aggregation": "Minute kW readings are converted to hourly MWh and scaled to FDRE sample capacities."
+}

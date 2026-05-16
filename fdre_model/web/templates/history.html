@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}History | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header"><div><p class="eyebrow">Decision History</p><h1>Cycles</h1></div></section>
+<section class="table-shell">
+  <table>
+    <thead><tr><th>Cycle</th><th>Created</th><th>Workspace</th><th>Window</th><th>Acknowledgement</th><th>Assumptions</th><th>Rules</th><th>Rows</th><th>Peak MWh</th><th>Shortfall</th></tr></thead>
+    <tbody>
+      {% for cycle in cycles %}
+        <tr>
+          <td><a href="{{ url_for('cycle_page', cycle_id=cycle.cycle_id) }}">{{ cycle.cycle_id }}</a></td>
+          <td>{{ cycle.created_at }}</td>
+          <td class="mono">{{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</td>
+          <td>{{ cycle.window_start }} to {{ cycle.window_end }}</td>
+          <td>
+            {% if acknowledgements.get(cycle.cycle_id) %}
+              <span class="pill ok">ack</span>
+              <span class="muted">{{ acknowledgements.get(cycle.cycle_id).user_email }}</span>
+            {% else %}
+              <span class="pill warning">open</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ cycle.model_versions.assumptions or "unversioned" }}</td>
+          <td class="mono">{{ cycle.model_versions.rules or "unversioned" }}</td>
+          <td>{{ cycle.summary.rows }}</td>
+          <td>{{ "%.1f"|format(cycle.summary.peak_power_sale_mwh or 0) }}</td>
+          <td>{{ "%.1f"|format(cycle.summary.shortfall_mwh or 0) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

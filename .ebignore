@@ -1,0 +1,11 @@
+.env
+.venv/
+.workspace/
+.pytest_cache/
+.playwright-cli/
+__pycache__/
+*.py[cod]
+*.egg-info/
+tests/
+FDRE Model.xlsx
+progress.md

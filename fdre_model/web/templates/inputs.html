@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Inputs | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Versioned Inputs</p>
+    <h1>Input Sources</h1>
+  </div>
+</section>
+
+<section class="stack">
+  {% for item in inputs %}
+    <article class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>{{ item.spec.label }}</h2>
+          <p class="muted">{{ item.spec.description }}</p>
+        </div>
+        {% if item.active %}
+          <span class="pill ok">Active {{ item.active.version_id }}</span>
+        {% endif %}
+      </div>
+      <div class="meta-grid">
+        <div><strong>Headers</strong><span>{{ item.spec.expected_headers | join(", ") }}</span></div>
+        <div><strong>Rows</strong><span>{{ item.active.row_count if item.active else "0" }}</span></div>
+        <div><strong>Coverage</strong><span>{{ item.active.coverage_start if item.active else "-" }} to {{ item.active.coverage_end if item.active else "-" }}</span></div>
+        <div><strong>Source</strong><span>{{ item.active.source_type if item.active else "-" }}</span></div>
+      </div>
+      <div class="split">
+        <form method="post" action="{{ url_for('upload_input', dataset_key=item.spec.key) }}" enctype="multipart/form-data" class="inline-form">
+          <input type="file" name="file" accept=".csv,text/csv">
+          <button type="submit">Upload</button>
+        </form>
+        <form method="post" action="{{ url_for('manual_input', dataset_key=item.spec.key) }}" class="manual-form">
+          <input type="hidden" name="source_type" value="manual">
+          <textarea name="csv_text" rows="4" placeholder="{{ item.spec.expected_headers | join(',') }}"></textarea>
+          <button type="submit">Save Manual Version</button>
+        </form>
+      </div>
+      {% if item.versions %}
+        <table class="compact">
+          <thead><tr><th>Version</th><th>Created</th><th>User</th><th>Rows</th><th>Action</th></tr></thead>
+          <tbody>
+            {% for version in item.versions[:5] %}
+              <tr>
+                <td class="mono">{{ version.version_id }}</td>
+                <td>{{ version.created_at }}</td>
+                <td>{{ version.user_email }}</td>
+                <td>{{ version.row_count }}</td>
+                <td>
+                  {% if item.active and item.active.version_id == version.version_id %}
+                    <span class="muted">Active</span>
+                  {% else %}
+                    <form method="post" action="{{ url_for('activate_input', dataset_key=item.spec.key, version_id=version.version_id) }}">
+                      <button class="small" type="submit">Activate</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </article>
+  {% endfor %}
+</section>
+{% endblock %}

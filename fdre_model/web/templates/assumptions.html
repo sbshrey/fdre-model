@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Assumptions | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Assumptions</p>
+    <h1>Market Config</h1>
+    {% if assumption_version %}
+      <p class="muted">Active version {{ assumption_version.version_id }} · {{ assumption_version.user_email }} · {{ assumption_version.created_at }}</p>
+    {% endif %}
+  </div>
+</section>
+{% if assumption_version %}
+  <section class="panel compact">
+    <div class="meta-grid">
+      <div><strong>Source</strong><span>{{ assumption_version.source_type }}</span></div>
+      <div><strong>Checksum</strong><span class="mono">{{ assumption_version.checksum }}</span></div>
+      <div><strong>Parent</strong><span class="mono">{{ assumption_version.parent_version_id or "none" }}</span></div>
+      <div><strong>Summary</strong><span>{{ assumption_version.summary }}</span></div>
+    </div>
+  </section>
+{% endif %}
+<form method="post" action="{{ url_for('save_assumptions') }}" class="panel form-grid">
+  <label><span>Interval</span><select name="market_model.interval">
+    {% for value in ["1h", "15m", "1m"] %}
+      <option value="{{ value }}" {% if config.market_model.interval == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select></label>
+  <label><span>Recent Hours</span><input type="number" name="market_model.recent_hours" value="{{ config.market_model.recent_hours }}"></label>
+  <label><span>Forecast Hours</span><input type="number" name="market_model.forecast_hours" value="{{ config.market_model.forecast_hours }}"></label>
+  <label><span>Charge Loss</span><input type="number" step="any" name="market_model.charge_loss_fraction" value="{{ config.market_model.charge_loss_fraction }}"></label>
+  <label><span>Discharge Loss</span><input type="number" step="any" name="market_model.discharge_loss_fraction" value="{{ config.market_model.discharge_loss_fraction }}"></label>
+  <label><span>Peak Hours</span><input type="text" name="market_model.default_peak_hours" value="{{ config.market_model.default_peak_hours | join(' ') }}"></label>
+  {% for key, value in config.capacities.__dict__.items() %}
+    <label><span>{{ key }}</span><input type="number" step="any" name="capacities.{{ key }}" value="{{ value }}"></label>
+  {% endfor %}
+  {% for key, value in config.tariffs.__dict__.items() %}
+    <label><span>{{ key }}</span><input type="number" step="any" name="tariffs.{{ key }}" value="{{ value }}"></label>
+  {% endfor %}
+  {% for key, value in config.state.__dict__.items() %}
+    <label><span>{{ key }}</span><input type="number" step="any" name="state.{{ key }}" value="{{ value }}"></label>
+  {% endfor %}
+  <div class="form-actions"><button type="submit">Save Assumptions</button></div>
+</form>
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">Audit Trail</p>
+      <h2>Assumption Versions</h2>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Version</th><th>User</th><th>Created</th><th>Source</th><th>Summary</th></tr></thead>
+    <tbody>
+      {% for version in assumption_versions %}
+        <tr>
+          <td class="mono">{{ version.version_id }}</td>
+          <td>{{ version.user_email }}</td>
+          <td>{{ version.created_at }}</td>
+          <td>{{ version.source_type }}</td>
+          <td>{{ version.summary }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

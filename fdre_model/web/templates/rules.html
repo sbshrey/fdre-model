@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Rules | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Rule Admin</p>
+    <h1>Priority Order</h1>
+    {% if rule_version %}
+      <p class="muted">Active version {{ rule_version.version_id }} · {{ rule_version.user_email }} · {{ rule_version.created_at }}</p>
+    {% endif %}
+  </div>
+</section>
+{% if rule_version %}
+  <section class="panel compact">
+    <div class="meta-grid">
+      <div><strong>Source</strong><span>{{ rule_version.source_type }}</span></div>
+      <div><strong>Checksum</strong><span class="mono">{{ rule_version.checksum }}</span></div>
+      <div><strong>Parent</strong><span class="mono">{{ rule_version.parent_version_id or "none" }}</span></div>
+      <div><strong>Summary</strong><span>{{ rule_version.summary }}</span></div>
+    </div>
+  </section>
+{% endif %}
+<form method="post" action="{{ url_for('save_rules') }}" class="panel">
+  <table>
+    <thead><tr><th>Enabled</th><th>Priority</th><th>Rule</th><th>Description</th><th>Condition</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for rule in rules|sort(attribute='priority') %}
+        <tr>
+          <td><input type="checkbox" name="enabled:{{ rule.rule_id }}" {% if rule.enabled %}checked{% endif %}></td>
+          <td><input class="priority-input" type="number" name="priority:{{ rule.rule_id }}" value="{{ rule.priority }}"></td>
+          <td><strong>{{ rule.name }}</strong><br><span class="mono">{{ rule.rule_id }}</span><br><span class="pill">{{ rule.rule_pack }}</span></td>
+          <td>{{ rule.description }}</td>
+          <td><textarea class="json-input" name="condition:{{ rule.rule_id }}" rows="5">{{ rule.condition | tojson }}</textarea></td>
+          <td><textarea class="json-input" name="action:{{ rule.rule_id }}" rows="5">{{ rule.action | tojson }}</textarea></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="actions end"><button type="submit">Save Rules</button></div>
+</form>
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">Audit Trail</p>
+      <h2>Rule Versions</h2>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Version</th><th>User</th><th>Created</th><th>Source</th><th>Summary</th></tr></thead>
+    <tbody>
+      {% for version in rule_versions %}
+        <tr>
+          <td class="mono">{{ version.version_id }}</td>
+          <td>{{ version.user_email }}</td>
+          <td>{{ version.created_at }}</td>
+          <td>{{ version.source_type }}</td>
+          <td>{{ version.summary }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

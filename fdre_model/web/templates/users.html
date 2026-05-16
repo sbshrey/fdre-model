@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Users · FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Access Control</p>
+    <h1>Users</h1>
+    <p class="muted">Manage who can access this FDRE workspace and which users have admin rights.</p>
+  </div>
+</section>
+
+<div class="split">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Add or Update User</h2>
+        <p class="muted">The email must match the email claim returned by Auth0.</p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('save_user') }}" class="manual-form">
+      <label>
+        <span>Email</span>
+        <input name="email" type="email" required placeholder="operator@example.com">
+      </label>
+      <label>
+        <span>Name</span>
+        <input name="name" placeholder="Optional display name">
+      </label>
+      <label>
+        <span>Role</span>
+        <select name="role">
+          <option value="operator">Operator</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <label class="check-label">
+        <input name="active" type="checkbox" checked>
+        <span>Active</span>
+      </label>
+      <label>
+        <span>Notes</span>
+        <textarea name="notes" rows="3" placeholder="Reason, team, or access context"></textarea>
+      </label>
+      <div class="actions end">
+        <button type="submit">Save User</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Environment Admins</h2>
+        <p class="muted">These users are locked as active admins from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS.</p>
+      </div>
+    </div>
+    {% if env_admin_emails %}
+      <ul class="compact-list">
+        {% for email in env_admin_emails %}
+          <li class="mono">{{ email }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No environment admins are configured.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
+      <h2>Workspace Users</h2>
+      <p class="muted">{{ users|length }} configured users</p>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Source</th>
+          <th>Updated</th>
+          <th>Updated By</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td class="mono">{{ user.email }}</td>
+            <td><span class="pill {% if user.role == 'admin' %}ok{% endif %}">{{ user.role }}</span></td>
+            <td>
+              {% if user.active %}
+                <span class="pill ok">active</span>
+              {% else %}
+                <span class="pill critical">inactive</span>
+              {% endif %}
+            </td>
+            <td>{{ user.source }}</td>
+            <td class="mono">{{ user.updated_at }}</td>
+            <td>{{ user.updated_by }}</td>
+            <td class="wrap">{{ user.notes }}</td>
+            <td>
+              {% if user.active and user.source != 'env' %}
+                <form method="post" action="{{ url_for('deactivate_user', email=user.email) }}">
+                  <button class="small ghost" type="submit">Deactivate</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

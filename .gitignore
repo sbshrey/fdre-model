@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+.venv/
+.workspace/
+.deploy/
+.pytest_cache/
+.playwright-cli/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+.DS_Store
+
+FDRE Model.xlsx
+*.log

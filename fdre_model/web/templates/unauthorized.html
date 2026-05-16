@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Access Required · FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="panel access-panel">
+  <p class="eyebrow">Access Required</p>
+  <h1>User Not Enabled</h1>
+  {% if user %}
+    <p class="muted">The authenticated email <span class="mono">{{ user.email }}</span> is not active for this FDRE workspace.</p>
+  {% else %}
+    <p class="muted">No authenticated user is available for this session.</p>
+  {% endif %}
+  <p class="muted">Ask an FDRE admin to add the email on the Users page, then sign in again.</p>
+  {% if auth0_enabled %}
+    <form method="post" action="{{ url_for('logout') }}">
+      <button type="submit">Return to Login</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}
