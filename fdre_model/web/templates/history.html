@@ -3,7 +3,7 @@
 {% block content %}
 <section class="page-header"><div><p class="eyebrow">Decision History</p><h1>Cycles</h1></div></section>
 <section class="table-shell">
-  <table>
+  <table data-syncfusion-grid="decision-history" data-grid-height="620" data-grid-page-size="25">
     <thead><tr><th>Cycle</th><th>Created</th><th>Workspace</th><th>Window</th><th>Acknowledgement</th><th>Assumptions</th><th>Rules</th><th>Rows</th><th>Peak MWh</th><th>Shortfall</th></tr></thead>
     <tbody>
       {% for cycle in cycles %}

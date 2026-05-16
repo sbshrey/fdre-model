@@ -54,10 +54,14 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Source Health" in live.data
     assert b"Operations Alerts" in live.data
     assert b"Why" in live.data
+    assert b"cdn.syncfusion.com/ej2/33.2.3" in live.data
+    assert b"syncfusion-tables.js" in live.data
+    assert b'data-syncfusion-grid="live-board"' in live.data
 
     inputs = client.get("/inputs")
     assert inputs.status_code == 200
     assert b"Solar Generation" in inputs.data
+    assert b"input-versions-solar" in inputs.data
 
     upload = client.post(
         "/inputs/solar/manual",

@@ -440,6 +440,49 @@ tbody tr:hover {
   background: #f8fbf9;
 }
 
+.syncfusion-source-table {
+  display: none;
+}
+
+.syncfusion-grid-host {
+  min-width: 100%;
+}
+
+.syncfusion-grid-host .e-grid {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.syncfusion-grid-host .e-grid .e-headercell,
+.syncfusion-grid-host .e-grid .e-detailheadercell {
+  background: #f0f0ea;
+  color: #4a4d52;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.syncfusion-grid-host .e-grid .e-rowcell {
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.syncfusion-grid-host .e-grid .e-toolbar,
+.syncfusion-grid-host .e-grid .e-pager {
+  background: #fff;
+  border-color: var(--line);
+}
+
+.syncfusion-grid-host .e-grid .e-row.status-live .e-rowcell {
+  background: #e9f7f4;
+}
+
+.syncfusion-grid-host .e-grid .e-row.status-forecast .e-rowcell {
+  background: #fbfbf8;
+}
+
 tr.status-live {
   background: #e9f7f4;
 }

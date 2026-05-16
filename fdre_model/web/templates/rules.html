@@ -21,7 +21,7 @@
   </section>
 {% endif %}
 <form method="post" action="{{ url_for('save_rules') }}" class="panel">
-  <table>
+  <table data-syncfusion-grid="rules-admin" data-grid-height="620" data-grid-page-size="10">
     <thead><tr><th>Enabled</th><th>Priority</th><th>Rule</th><th>Description</th><th>Condition</th><th>Action</th></tr></thead>
     <tbody>
       {% for rule in rules|sort(attribute='priority') %}
@@ -45,7 +45,7 @@
       <h2>Rule Versions</h2>
     </div>
   </div>
-  <table>
+  <table data-syncfusion-grid="rule-versions" data-grid-page-size="10">
     <thead><tr><th>Version</th><th>User</th><th>Created</th><th>Source</th><th>Summary</th></tr></thead>
     <tbody>
       {% for version in rule_versions %}

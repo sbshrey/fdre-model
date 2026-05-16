@@ -167,6 +167,7 @@ def create_app(
                 "auth0_enabled": auth0_enabled,
                 "auth0_management_enabled": auth0_management is not None,
                 "auth0_connection_name": auth0_connection_name(),
+                "syncfusion_license_key": _env_first("FDRE_SYNCFUSION_LICENSE_KEY", "SYNCFUSION_LICENSE_KEY") or "",
             }
         state = store.for_scope(user.scope).ensure()
         return {
@@ -179,6 +180,7 @@ def create_app(
             "auth0_enabled": auth0_enabled,
             "auth0_management_enabled": auth0_management is not None,
             "auth0_connection_name": auth0_connection_name(),
+            "syncfusion_license_key": _env_first("FDRE_SYNCFUSION_LICENSE_KEY", "SYNCFUSION_LICENSE_KEY") or "",
         }
 
     @app.get("/")

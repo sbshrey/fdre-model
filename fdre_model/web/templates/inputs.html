@@ -41,7 +41,7 @@
         </form>
       </div>
       {% if item.versions %}
-        <table class="compact">
+        <table class="compact" data-syncfusion-grid="input-versions-{{ item.spec.key }}" data-grid-page-size="5">
           <thead><tr><th>Version</th><th>Created</th><th>User</th><th>Rows</th><th>Actions</th></tr></thead>
           <tbody>
             {% for version in item.versions[:5] %}
