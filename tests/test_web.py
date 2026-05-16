@@ -55,6 +55,7 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Operations Alerts" in live.data
     assert b"Why" in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data
+    assert b'class="why-column">Why' in live.data
     assert b"cdn.syncfusion.com/ej2/33.2.3" not in live.data
     assert b"syncfusion-tables.js" not in live.data
 

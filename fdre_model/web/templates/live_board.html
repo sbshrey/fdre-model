@@ -151,7 +151,7 @@
         <th>Shortfall</th>
         <th>Market</th>
         <th>Rule</th>
-        <th>Why</th>
+        <th class="why-column">Why</th>
       </tr>
     </thead>
     <tbody>
@@ -171,7 +171,7 @@
           <td>{{ "%.1f"|format(row.shortfall_mwh|float) }}</td>
           <td>{{ row.recommended_market }}</td>
           <td class="mono">{{ row.applied_rule_ids }}</td>
-          <td>
+          <td class="why-column">
             <details class="why-detail">
               <summary>Why</summary>
               <div>

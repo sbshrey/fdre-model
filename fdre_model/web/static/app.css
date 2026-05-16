@@ -440,6 +440,15 @@ tbody tr:hover {
   background: #f8fbf9;
 }
 
+th.why-column,
+td.why-column {
+  width: 360px;
+  min-width: 300px;
+  max-width: 420px;
+  white-space: normal;
+  vertical-align: top;
+}
+
 .syncfusion-source-table {
   display: none;
 }
@@ -528,7 +537,9 @@ tr.status-forecast {
 }
 
 .why-detail {
-  min-width: 220px;
+  min-width: 0;
+  max-width: min(420px, 34vw);
+  white-space: normal;
 }
 
 .why-detail summary {
@@ -537,8 +548,33 @@ tr.status-forecast {
   font-weight: 850;
 }
 
+.why-detail > div {
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.why-detail strong {
+  display: block;
+  margin-top: 8px;
+}
+
+.why-detail strong:first-child {
+  margin-top: 0;
+}
+
 .why-detail p {
   margin: 4px 0 8px;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .messages {
@@ -748,5 +784,15 @@ textarea {
   th,
   td {
     padding: 9px;
+  }
+
+  th.why-column,
+  td.why-column {
+    min-width: 260px;
+    max-width: 320px;
+  }
+
+  .why-detail {
+    max-width: 78vw;
   }
 }
