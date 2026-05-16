@@ -34,8 +34,10 @@ def build_decisions(
     rules: list[RuleDefinition],
     *,
     now: datetime | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> tuple[list[MarketDecision], list[TimeBucket]]:
-    buckets = build_time_buckets(config, now=now)
+    buckets = build_time_buckets(config, now=now, window_start=window_start, window_end=window_end)
     solar = aggregate_generation(active_inputs.solar_rows, buckets)
     wind = aggregate_generation(active_inputs.wind_rows, buckets)
     prices = aggregate_prices(

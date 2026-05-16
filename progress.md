@@ -30,6 +30,9 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 8. Add easy in-app active input updates.
   - Operators can edit a rolling time window or paste replacement CSV rows.
   - Saves create new active input versions with user/source metadata instead of mutating prior versions.
+- [x] 9. Add preferred Live Board preview windows.
+  - Default remains 6 actual + 1 live + 24 forecast = 31 rows.
+  - Operators can load a custom start/live/end interval range without changing saved assumptions.
 
 ## Verification Log
 
@@ -49,3 +52,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Added Syncfusion EJ2 Grid progressive enhancement for app tables using CDN assets and an optional environment-provided license key.
 - 2026-05-16: Gated Syncfusion assets behind FDRE_SYNCFUSION_LICENSE_KEY so unlicensed hosted environments use native tables without the Syncfusion validation banner.
 - 2026-05-16: Added in-app active input editing for source rows and pasted CSV replacements, preserving immutable version history and active-version audit metadata.
+- 2026-05-16: Added Live Board preferred range controls with custom start/live/end preview cycles and default 31-row operating window display.

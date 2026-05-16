@@ -51,14 +51,30 @@ def floor_datetime(value: datetime, interval: timedelta) -> datetime:
     return epoch + timedelta(seconds=(offset // seconds) * seconds)
 
 
-def build_time_buckets(config: AppConfig, *, now: datetime | None = None) -> list[TimeBucket]:
+def build_time_buckets(
+    config: AppConfig,
+    *,
+    now: datetime | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
+) -> list[TimeBucket]:
     current = floor_datetime(now or _configured_now(config), parse_interval(config.market_model.interval))
     interval = parse_interval(config.market_model.interval)
-    start = current - timedelta(hours=config.market_model.recent_hours)
-    count = int((timedelta(hours=config.market_model.recent_hours + config.market_model.forecast_hours) / interval)) + 1
+    if window_start is None and window_end is None:
+        start = current - timedelta(hours=config.market_model.recent_hours)
+        count = int((timedelta(hours=config.market_model.recent_hours + config.market_model.forecast_hours) / interval)) + 1
+        end = start + count * interval
+    else:
+        start = floor_datetime(window_start or (current - timedelta(hours=config.market_model.recent_hours)), interval)
+        end = ceil_datetime(window_end or (current + timedelta(hours=config.market_model.forecast_hours + 1)), interval)
+        if end <= start:
+            raise ValueError("Live preview end must be after start.")
     buckets: list[TimeBucket] = []
-    for index in range(count):
+    index = 0
+    while True:
         bucket_start = start + index * interval
+        if bucket_start >= end:
+            break
         bucket_end = bucket_start + interval
         if bucket_start < current:
             status = "actual"
@@ -74,7 +90,15 @@ def build_time_buckets(config: AppConfig, *, now: datetime | None = None) -> lis
                 is_peak=bucket_start.hour in config.market_model.default_peak_hours,
             )
         )
+        index += 1
     return buckets
+
+
+def ceil_datetime(value: datetime, interval: timedelta) -> datetime:
+    floored = floor_datetime(value, interval)
+    if floored == value:
+        return floored
+    return floored + interval
 
 
 def _configured_now(config: AppConfig) -> datetime:

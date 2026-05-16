@@ -388,7 +388,14 @@ class LocalWorkspaceStore:
             raise FileNotFoundError(f"Model version not found: {version_type}/{version_id}")
         return ModelVersion.from_json(json.loads(meta_path.read_text(encoding="utf-8")))
 
-    def create_decision_cycle(self, state: Workspace, *, now: datetime | None = None) -> DecisionCycle:
+    def create_decision_cycle(
+        self,
+        state: Workspace,
+        *,
+        now: datetime | None = None,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+    ) -> DecisionCycle:
         config = self.load_config(state)
         rules = self.load_rules(state)
         effective_now = now or _configured_now(config)
@@ -412,11 +419,12 @@ class LocalWorkspaceStore:
             active_texts[spec.key] = "" if validation_error else text
 
         inputs = parse_active_input_texts(active_texts, version_ids)
-        decisions, buckets = build_decisions(config, inputs, rules, now=effective_now)
+        decisions, buckets = build_decisions(config, inputs, rules, now=effective_now, window_start=window_start, window_end=window_end)
         for decision in decisions:
             decision.audit_trace.append(f"model_versions={model_versions}")
         source_health = self.source_health(state, now=effective_now, buckets=buckets)
         summary = summary_for_decisions(decisions)
+        summary.update(_window_summary_values(buckets, effective_now, custom=window_start is not None or window_end is not None))
         summary.update(_source_health_summary(source_health))
         summary.update(_model_version_summary_values(model_versions))
         summary.update(_scope_json(state))
@@ -451,19 +459,29 @@ class LocalWorkspaceStore:
         state: Workspace,
         *,
         now: datetime | None = None,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
         force: bool = False,
     ) -> DecisionCycle:
         cycle = None if force else self.latest_cycle(state)
-        if cycle is None or self.cycle_is_stale(state, cycle, now=now):
-            return self.create_decision_cycle(state, now=now)
+        if cycle is None or self.cycle_is_stale(state, cycle, now=now, window_start=window_start, window_end=window_end):
+            return self.create_decision_cycle(state, now=now, window_start=window_start, window_end=window_end)
         return cycle
 
-    def cycle_is_stale(self, state: Workspace, cycle: DecisionCycle, *, now: datetime | None = None) -> bool:
+    def cycle_is_stale(
+        self,
+        state: Workspace,
+        cycle: DecisionCycle,
+        *,
+        now: datetime | None = None,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+    ) -> bool:
         if not cycle.source_health:
             return True
         config = self.load_config(state)
         effective_now = now or _configured_now(config)
-        buckets = build_time_buckets(config, now=effective_now)
+        buckets = build_time_buckets(config, now=effective_now, window_start=window_start, window_end=window_end)
         expected_window_start = buckets[0].start.isoformat(sep=" ") if buckets else ""
         expected_window_end = buckets[-1].end.isoformat(sep=" ") if buckets else ""
         if cycle.window_start != expected_window_start or cycle.window_end != expected_window_end:
@@ -1104,6 +1122,19 @@ def _model_version_summary_values(model_versions: dict[str, str]) -> dict[str, s
     return {
         "assumption_version_id": model_versions.get("assumptions", ""),
         "rule_version_id": model_versions.get("rules", ""),
+    }
+
+
+def _window_summary_values(buckets: list[Any], effective_now: datetime, *, custom: bool) -> dict[str, str | int]:
+    live_bucket = next((bucket for bucket in buckets if getattr(bucket, "status", "") == "live"), None)
+    return {
+        "window_mode": "custom" if custom else "default",
+        "live_interval": (
+            getattr(live_bucket, "start").isoformat(sep=" ") if live_bucket is not None else effective_now.isoformat(sep=" ")
+        ),
+        "actual_rows": sum(1 for bucket in buckets if getattr(bucket, "status", "") == "actual"),
+        "live_rows": sum(1 for bucket in buckets if getattr(bucket, "status", "") == "live"),
+        "forecast_rows": sum(1 for bucket in buckets if getattr(bucket, "status", "") == "forecast"),
     }
 
 

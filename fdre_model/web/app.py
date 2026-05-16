@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ from flask import Flask, Response, abort, flash, jsonify, redirect, render_templ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from fdre_model.config import AppConfig
-from fdre_model.market.aggregation import parse_csv_text
+from fdre_model.market.aggregation import ceil_datetime, floor_datetime, parse_csv_text, parse_interval
 from fdre_model.market.models import InputSpec, RuleDefinition
 from fdre_model.storage.hosted import HostedPersistence
 from fdre_model.storage.local import INPUT_SPECS, LocalWorkspaceStore
@@ -40,6 +41,14 @@ from fdre_model.web.auth0_management import Auth0ManagementClient, auth0_connect
 
 
 _logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LiveWindowSelection:
+    live_at: datetime | None
+    window_start: datetime | None
+    window_end: datetime | None
+    custom: bool
 
 
 def create_app(
@@ -189,9 +198,20 @@ def create_app(
         }
 
     @app.get("/")
-    def live_board() -> str:
+    def live_board() -> str | Response:
         state = workspace()
-        cycle = store.latest_or_create_cycle(state)
+        config = store.load_config(state)
+        try:
+            live_window = _live_window_selection(request.args, config)
+        except Exception as exc:
+            flash(f"Live preview range failed: {exc}", "error")
+            return redirect(url_for("live_board"))
+        cycle = store.latest_or_create_cycle(
+            state,
+            now=live_window.live_at,
+            window_start=live_window.window_start,
+            window_end=live_window.window_end,
+        )
         rows = store.read_allocation_rows(cycle)
         filters = _filters_from_request(request.args)
         market_options = _market_options(rows)
@@ -206,6 +226,7 @@ def create_app(
             filters=filters,
             market_options=market_options,
             summary=cycle.summary,
+            window=_live_window_context(cycle, rows, config),
             alerts=_live_alerts(cycle, rows),
             acknowledgement=acknowledgement,
         )
@@ -213,9 +234,21 @@ def create_app(
     @app.post("/cycles/recalculate")
     def recalculate_cycle() -> Response:
         state = workspace()
-        cycle = store.latest_or_create_cycle(state, force=True)
+        config = store.load_config(state)
+        try:
+            live_window = _live_window_selection(request.form, config)
+        except Exception as exc:
+            flash(f"Live preview range failed: {exc}", "error")
+            return redirect(url_for("live_board"))
+        cycle = store.latest_or_create_cycle(
+            state,
+            now=live_window.live_at,
+            window_start=live_window.window_start,
+            window_end=live_window.window_end,
+            force=True,
+        )
         flash(f"Decision cycle recalculated: {cycle.cycle_id}", "success")
-        return redirect(url_for("live_board"))
+        return redirect(url_for("live_board", **_live_window_query(live_window)))
 
     @app.get("/history")
     def history_page() -> str:
@@ -235,6 +268,7 @@ def create_app(
             flash("Decision cycle not found.", "error")
             return redirect(url_for("history_page"))
         rows = store.read_allocation_rows(cycle)
+        config = store.load_config(state)
         return render_template(
             "live_board.html",
             active_page="history",
@@ -244,6 +278,7 @@ def create_app(
             filters=_default_filters(),
             market_options=_market_options(rows),
             summary=cycle.summary,
+            window=_live_window_context(cycle, rows, config),
             alerts=_live_alerts(cycle, rows),
             acknowledgement=store.get_acknowledgement(state, cycle.cycle_id),
         )
@@ -730,6 +765,70 @@ def _same_email(first: str, second: str) -> bool:
 
 def _normalized_email(value: str) -> str:
     return value.strip().lower()
+
+
+def _live_window_selection(values: Any, config: AppConfig) -> LiveWindowSelection:
+    has_window_values = any(str(values.get(key) or "").strip() for key in ("window_start", "window_end", "live_at"))
+    if not has_window_values:
+        return LiveWindowSelection(live_at=None, window_start=None, window_end=None, custom=False)
+    interval = parse_interval(config.market_model.interval)
+    live_at = floor_datetime(_parse_optional_input_datetime(values.get("live_at")) or _local_now(config), interval)
+    start = floor_datetime(
+        _parse_optional_input_datetime(values.get("window_start")) or (live_at - timedelta(hours=config.market_model.recent_hours)),
+        interval,
+    )
+    end = ceil_datetime(
+        _parse_optional_input_datetime(values.get("window_end")) or (live_at + timedelta(hours=config.market_model.forecast_hours + 1)),
+        interval,
+    )
+    if end <= start:
+        raise ValueError("End must be after start.")
+    return LiveWindowSelection(live_at=live_at, window_start=start, window_end=end, custom=True)
+
+
+def _live_window_context(cycle: Any, rows: list[dict[str, str]], config: AppConfig) -> dict[str, Any]:
+    actual_rows = _summary_int(cycle.summary, "actual_rows", sum(1 for row in rows if row.get("status") == "actual"))
+    live_rows = _summary_int(cycle.summary, "live_rows", sum(1 for row in rows if row.get("status") == "live"))
+    forecast_rows = _summary_int(cycle.summary, "forecast_rows", sum(1 for row in rows if row.get("status") == "forecast"))
+    total_rows = actual_rows + live_rows + forecast_rows
+    live_interval = str(cycle.summary.get("live_interval") or _live_interval_from_rows(rows) or cycle.window_start)
+    return {
+        "mode": str(cycle.summary.get("window_mode") or "default"),
+        "start": _datetime_local(_parse_input_datetime(cycle.window_start)),
+        "end": _datetime_local(_parse_input_datetime(cycle.window_end)),
+        "live_at": _datetime_local(_parse_input_datetime(live_interval)),
+        "actual_rows": actual_rows,
+        "live_rows": live_rows,
+        "forecast_rows": forecast_rows,
+        "total_rows": total_rows,
+        "formula": f"{actual_rows} actual + {live_rows} live + {forecast_rows} forecast = {total_rows}",
+        "default_formula": (
+            f"{config.market_model.recent_hours} actual + 1 live + "
+            f"{config.market_model.forecast_hours} forecast = {config.market_model.recent_hours + 1 + config.market_model.forecast_hours}"
+        ),
+    }
+
+
+def _live_window_query(selection: LiveWindowSelection) -> dict[str, str]:
+    if not selection.custom or selection.window_start is None or selection.window_end is None or selection.live_at is None:
+        return {}
+    return {
+        "window_start": _datetime_local(selection.window_start),
+        "window_end": _datetime_local(selection.window_end),
+        "live_at": _datetime_local(selection.live_at),
+    }
+
+
+def _summary_int(summary: dict[str, Any], key: str, fallback: int) -> int:
+    try:
+        value = summary.get(key)
+        return fallback if value in (None, "") else int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _live_interval_from_rows(rows: list[dict[str, str]]) -> str | None:
+    return next((row.get("interval_start") for row in rows if row.get("status") == "live"), None)
 
 
 def _input_spec(dataset_key: str) -> InputSpec:

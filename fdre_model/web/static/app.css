@@ -388,6 +388,24 @@ button.ghost {
   margin-bottom: 12px;
 }
 
+.window-panel {
+  margin-bottom: 18px;
+}
+
+.window-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.window-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .filter-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(150px, 1fr)) minmax(160px, 0.7fr) auto;
@@ -889,6 +907,7 @@ textarea {
   .meta-grid,
   .health-grid,
   .ops-grid,
+  .window-form,
   .filter-form,
   .split,
   .form-grid {

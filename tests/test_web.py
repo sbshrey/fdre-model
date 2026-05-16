@@ -54,6 +54,7 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Source Health" in live.data
     assert b"Operations Alerts" in live.data
     assert b"Why" in live.data
+    assert b"default 6 actual + 1 live + 24 forecast = 31" in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data
     assert b'class="why-column" data-grid-width="360">Why' in live.data
     assert b"Rule path" in live.data
@@ -98,6 +99,45 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     history = client.get("/history")
     assert history.status_code == 200
     assert b"Cycles" in history.data
+
+
+def test_live_board_can_preview_custom_date_range(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    preview = client.get(
+        "/?window_start=2026-01-01T08:00&live_at=2026-01-01T10:00&window_end=2026-01-01T13:00"
+    )
+
+    assert preview.status_code == 200
+    assert b"2 actual + 1 live + 2 forecast = 5" in preview.data
+    assert b"custom" in preview.data
+    assert b"2026-01-01T08:00" in preview.data
+    assert b"2026-01-01T10:00" in preview.data
+    assert b"2026-01-01T13:00" in preview.data
+    assert b"5 / 5 rows" in preview.data
+    assert b"2026-01-01 08:00:00" in preview.data
+    assert b"2026-01-01 12:00:00" in preview.data
+
+
+def test_custom_live_board_recalculate_preserves_preview_range(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    recalculated = client.post(
+        "/cycles/recalculate",
+        data={
+            "window_start": "2026-01-01T08:00",
+            "live_at": "2026-01-01T10:00",
+            "window_end": "2026-01-01T13:00",
+        },
+        follow_redirects=True,
+    )
+
+    assert recalculated.status_code == 200
+    assert b"Decision cycle recalculated" in recalculated.data
+    assert b"2 actual + 1 live + 2 forecast = 5" in recalculated.data
+    assert b"custom" in recalculated.data
 
 
 def test_syncfusion_assets_load_only_with_license_key(tmp_path: Path, monkeypatch) -> None:
