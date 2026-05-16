@@ -22,7 +22,7 @@ def test_user_scope_comes_from_trusted_headers_and_is_sanitized() -> None:
 
 def test_auth0_claims_create_admin_user_with_default_scope(monkeypatch) -> None:
     monkeypatch.setenv("FDRE_MODEL_ADMIN_EMAILS", "Admin@Example.com")
-    monkeypatch.setenv("FDRE_MODEL_CUSTOMER_ID", "Cargill Demo")
+    monkeypatch.setenv("FDRE_MODEL_CUSTOMER_ID", "Demo Customer")
     monkeypatch.setenv("FDRE_MODEL_WORKSPACE_ID", "FDRE Ops")
 
     user = CurrentUser.from_claims(
@@ -36,7 +36,7 @@ def test_auth0_claims_create_admin_user_with_default_scope(monkeypatch) -> None:
 
     assert user.is_admin
     assert user.email == "admin@example.com"
-    assert user.scope.customer_id == "cargill-demo"
+    assert user.scope.customer_id == "demo-customer"
     assert user.scope.workspace_id == "fdre-ops"
     assert loaded == user
 

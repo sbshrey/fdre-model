@@ -1,6 +1,6 @@
 {
   "sample_year": 2026,
-  "source_repo": "/Users/shreybaheti/Library/CloudStorage/OneDrive-CargillInc/Documents/ShreyBaheti/seci-fdre-v-rfs-13-0014",
+  "source_repo": "seci-fdre-v-rfs-13-0014",
   "sources": [
     "data/Solar_2025-01-01_data_.csv",
     "data/Wind_2025_01-01_data_.csv",
