@@ -53,6 +53,8 @@ The workbook uses compact model codes: `M1-M5`, `G1-G4`, `C1-C6`, `T1-T7`, `Cap1
 
 Impact: rules cannot yet be configured in the same language as the `Notes` sheet. This makes workbook parity hard to verify and harder for business users to audit.
 
+Status update: implemented after this review. The app now includes a workbook variable and case registry surfaced on Assumptions and Rules. Follow-on items still need to implement the planned calculations and rule actions behind that registry.
+
 ### 2. Consumption / Commitment Model Is Too Thin
 
 The app has capacity values for PPA, merchant, and peak power, but it does not model consumption/commitment targets as their own inputs:

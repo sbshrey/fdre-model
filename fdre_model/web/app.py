@@ -21,6 +21,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from fdre_model.config import AppConfig
 from fdre_model.market.aggregation import ceil_datetime, floor_datetime, parse_csv_text, parse_interval
 from fdre_model.market.models import InputSpec, RuleDefinition
+from fdre_model.market.registry import workbook_case_rows, workbook_variable_rows
 from fdre_model.storage.hosted import HostedPersistence
 from fdre_model.storage.local import INPUT_SPECS, LocalWorkspaceStore
 from fdre_model.web.auth import (
@@ -447,12 +448,15 @@ def create_app(
     def rules_page() -> str:
         require_admin()
         state = workspace()
+        config = store.load_config(state)
         return render_template(
             "rules.html",
             active_page="rules",
             rules=store.load_rules(state),
             rule_version=store.active_model_version(state, "rules"),
             rule_versions=store.list_model_versions(state, "rules"),
+            workbook_variables=workbook_variable_rows(config),
+            workbook_cases=workbook_case_rows(),
         )
 
     @app.post("/rules/save")
@@ -489,12 +493,14 @@ def create_app(
     def assumptions_page() -> str:
         require_admin()
         state = workspace()
+        config = store.load_config(state)
         return render_template(
             "assumptions.html",
             active_page="assumptions",
-            config=store.load_config(state),
+            config=config,
             assumption_version=store.active_model_version(state, "assumptions"),
             assumption_versions=store.list_model_versions(state, "assumptions"),
+            workbook_variables=workbook_variable_rows(config),
         )
 
     @app.post("/assumptions/save")

@@ -100,10 +100,16 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Rule Versions" in rules.data
     assert b"Condition" in rules.data
     assert b"Action" in rules.data
+    assert b"Rule Case Reference" in rules.data
+    assert b"Case 6/7" in rules.data
+    assert b"Rule Input Dictionary" in rules.data
 
     assumptions = client.get("/assumptions", headers=admin_headers)
     assert assumptions.status_code == 200
     assert b"Assumption Versions" in assumptions.data
+    assert b"Variable Registry" in assumptions.data
+    assert b"Cap10" in assumptions.data
+    assert b"capacities.peak_power_mwh" in assumptions.data
 
     users = client.get("/users", headers=admin_headers)
     assert users.status_code == 200

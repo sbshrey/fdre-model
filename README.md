@@ -30,6 +30,7 @@ The app creates `.workspace/customers/<customer>/workspaces/<workspace>/` with v
 - Decision cycles reference input versions plus active assumption/rule versions.
 - Ordered rule engine with admin-managed enable/disable, priority, JSON conditions, and JSON actions.
 - Explicit skipped/conflict traces when lower-priority residual rules are blocked by higher-priority allocations.
+- Workbook-aligned variable and case registry for translating Notes-sheet codes into app assumptions, inputs, outputs, and rule work.
 - Disabled future rule-pack placeholders for annual CUF, monthly compliance, merchant buy, penalty procurement, and forecast lookahead behavior.
 - Customer/workspace isolation through trusted identity headers, with the same scope used for hosted object/index keys.
 - Live operations UX with alert cards, filtered interval views, why-this-market drilldowns, and operator acknowledgement state.

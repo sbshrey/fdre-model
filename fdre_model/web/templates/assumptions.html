@@ -45,6 +45,45 @@
 <section class="panel compact">
   <div class="panel-head">
     <div>
+      <p class="eyebrow">Workbook Alignment</p>
+      <h2>Variable Registry</h2>
+      <p class="muted">Codes from the Notes sheet mapped to app assumptions, inputs, outputs, or planned rule metrics.</p>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table data-syncfusion-grid="workbook-variable-registry" data-grid-height="520" data-grid-page-size="15">
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Code</th>
+          <th>Workbook Label</th>
+          <th>App Field</th>
+          <th>Current Value</th>
+          <th>Status</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in workbook_variables %}
+          <tr>
+            <td>{{ item.group }}</td>
+            <td class="mono">{{ item.code }}</td>
+            <td>{{ item.label }}</td>
+            <td class="mono">{{ item.app_field }}</td>
+            <td class="mono">{{ item.current_value }}</td>
+            <td>
+              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">{{ item.status }}</span>
+            </td>
+            <td class="wrap">{{ item.notes }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
       <p class="eyebrow">Audit Trail</p>
       <h2>Assumption Versions</h2>
     </div>

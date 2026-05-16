@@ -41,6 +41,78 @@
 <section class="panel compact">
   <div class="panel-head">
     <div>
+      <p class="eyebrow">Workbook Alignment</p>
+      <h2>Rule Case Reference</h2>
+      <p class="muted">Notes-sheet case language mapped to current rule engine behavior and upcoming rule packs.</p>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table data-syncfusion-grid="workbook-case-reference" data-grid-height="420" data-grid-page-size="10">
+      <thead>
+        <tr>
+          <th>Case</th>
+          <th>Scope</th>
+          <th>Workbook Logic</th>
+          <th>App Reference</th>
+          <th>Status</th>
+          <th>Next Work</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in workbook_cases %}
+          <tr>
+            <td class="mono">{{ item.code }}</td>
+            <td>{{ item.scope }}</td>
+            <td class="wrap">{{ item.workbook_logic }}</td>
+            <td class="mono">{{ item.app_reference }}</td>
+            <td>
+              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">{{ item.status }}</span>
+            </td>
+            <td class="wrap">{{ item.next_work }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">Workbook Variables</p>
+      <h2>Rule Input Dictionary</h2>
+      <p class="muted">Use these codes when translating workbook conditions into rule JSON.</p>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table data-syncfusion-grid="rule-variable-dictionary" data-grid-height="360" data-grid-page-size="15">
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Code</th>
+          <th>Workbook Label</th>
+          <th>App Field</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in workbook_variables %}
+          <tr>
+            <td>{{ item.group }}</td>
+            <td class="mono">{{ item.code }}</td>
+            <td>{{ item.label }}</td>
+            <td class="mono">{{ item.app_field }}</td>
+            <td>
+              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">{{ item.status }}</span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="panel compact">
+  <div class="panel-head">
+    <div>
       <p class="eyebrow">Audit Trail</p>
       <h2>Rule Versions</h2>
     </div>
