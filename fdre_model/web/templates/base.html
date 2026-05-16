@@ -10,8 +10,11 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark"></span>
-      <span>FDRE Market Operations</span>
+      <span class="brand-mark">DE</span>
+      <span class="brand-copy">
+        <span class="brand-kicker">Digitised Energy</span>
+        <span>FDRE Market Operations</span>
+      </span>
     </div>
     <nav>
       <a href="{{ url_for('live_board') }}" class="{% if active_page == 'live' %}active{% endif %}">Live Board</a>

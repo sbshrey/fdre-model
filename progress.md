@@ -41,3 +41,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Replaced synthetic bootstrap inputs with SECI-derived 2026 sample data for solar, wind, BESS state, T2 pricing, and peak schedule. Existing manual uploads are preserved; legacy seed inputs refresh automatically.
 - 2026-05-16: Added in-app FDRE user administration. Admin emails can come from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS; admins can add/deactivate workspace users and set operator/admin roles.
 - 2026-05-16: Added Auth0 Management API integration for admin-created users, invite/reset emails, Auth0 blocking on deactivation, and guarded Auth0 identity deletion.
+- 2026-05-16: Refreshed the portal theme using Digitised Energy visual cues: light grey shell, green energy accent, compact rectangular controls, and responsive branded header.
