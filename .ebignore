@@ -3,6 +3,8 @@
 .workspace/
 .pytest_cache/
 .playwright-cli/
+output/
+.deploy/
 __pycache__/
 *.py[cod]
 *.egg-info/
