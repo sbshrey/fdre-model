@@ -122,6 +122,15 @@ def create_app(
             return _user_with_role(user, ADMIN_ROLE)
         state = store.for_scope(user.scope).ensure()
         app_user = store.app_user(state, user.email)
+        if auth0_enabled and enforce and app_user is None:
+            app_user = store.activate_app_user(
+                state,
+                user.email,
+                user_email="auth0",
+                name=user.name,
+                notes="Auto-activated from Auth0 login.",
+                source="auth0",
+            )
         if app_user is None:
             return None if enforce else user
         if not app_user.active:
@@ -517,10 +526,22 @@ def create_app(
     def users_page() -> str:
         require_admin()
         state = workspace()
+        users = store.list_app_users(state)
+        auth0_users = []
+        auth0_users_error = ""
+        if auth0_management is not None:
+            try:
+                auth0_users = auth0_management.list_users()
+                _sync_auth0_users_to_workspace(store, state, auth0_users, current_user_email())
+                users = store.list_app_users(state)
+            except Exception as exc:
+                auth0_users_error = str(exc)
         return render_template(
             "users.html",
             active_page="users",
-            users=store.list_app_users(state),
+            users=users,
+            auth0_users=_auth0_user_rows(auth0_users, users),
+            auth0_users_error=auth0_users_error,
             env_admin_emails=sorted(admin_emails()),
             auth0_management_enabled=auth0_management is not None,
             auth0_connection_name=auth0_connection_name(),
@@ -691,7 +712,8 @@ def _activate_workspace_user(
         state,
         normalized_email,
         user_email=actor_email,
-        name=getattr(auth0_user, "email", "") if auth0_user is not None else "",
+        name=_auth0_display_name(auth0_user) if auth0_user is not None else "",
+        notes="Activated by FDRE admin.",
     )
     if auth0_management is not None and auth0_user is not None:
         auth0_management.block_user(auth0_user.user_id, blocked=False)
@@ -705,6 +727,68 @@ def _block_auth0_user(auth0_management: Any | None, email: str) -> str:
         return "No matching Auth0 user was found to block."
     auth0_management.block_user(auth0_user.user_id, blocked=True)
     return "Matching Auth0 user blocked."
+
+
+def _sync_auth0_users_to_workspace(
+    store: LocalWorkspaceStore,
+    state: Any,
+    auth0_users: list[Any],
+    actor_email: str,
+) -> None:
+    for auth0_user in auth0_users:
+        email = _normalized_email(str(getattr(auth0_user, "email", "") or ""))
+        if not email or "@" not in email:
+            continue
+        existing = store.app_user(state, email)
+        if existing is not None:
+            continue
+        store.activate_app_user(
+            state,
+            email,
+            user_email=actor_email,
+            name=_auth0_display_name(auth0_user),
+            notes="Auto-activated from Auth0 directory sync.",
+            source="auth0",
+        )
+
+
+def _auth0_user_rows(auth0_users: list[Any], app_users: list[Any]) -> list[dict[str, Any]]:
+    app_by_email = {str(user.email).strip().lower(): user for user in app_users}
+    rows = []
+    for auth0_user in auth0_users:
+        email = _normalized_email(str(getattr(auth0_user, "email", "") or ""))
+        if not email:
+            continue
+        raw = dict(getattr(auth0_user, "raw", {}) or {})
+        app_user = app_by_email.get(email)
+        rows.append(
+            {
+                "email": email,
+                "name": _auth0_display_name(auth0_user),
+                "blocked": bool(raw.get("blocked", False)),
+                "email_verified": bool(raw.get("email_verified", False)),
+                "last_login": str(raw.get("last_login") or ""),
+                "created_at": str(raw.get("created_at") or ""),
+                "fdre_status": _fdre_user_status(app_user),
+                "fdre_role": str(getattr(app_user, "role", "operator") or "operator"),
+                "can_reactivate": app_user is not None and not bool(getattr(app_user, "active", False)),
+            }
+        )
+    rows.sort(key=lambda row: (row["fdre_status"] != "inactive", row["email"]))
+    return rows
+
+
+def _fdre_user_status(app_user: Any | None) -> str:
+    if app_user is None:
+        return "pending sync"
+    return "active" if bool(getattr(app_user, "active", False)) else "inactive"
+
+
+def _auth0_display_name(auth0_user: Any | None) -> str:
+    if auth0_user is None:
+        return ""
+    raw = dict(getattr(auth0_user, "raw", {}) or {})
+    return str(raw.get("name") or raw.get("nickname") or getattr(auth0_user, "email", "") or "").strip()
 
 
 def _same_email(first: str, second: str) -> bool:

@@ -5,16 +5,90 @@
   <div>
     <p class="eyebrow">Access Control</p>
     <h1>Users</h1>
-    <p class="muted">Activate or deactivate FDRE workspace access. Create user identities directly in Auth0.</p>
+    <p class="muted">Auth0 is the identity source. New Auth0 users are active by default unless deactivated here.</p>
   </div>
 </section>
 
-<div class="split">
+{% if auth0_management_enabled %}
+  <section class="panel compact">
+    <div class="panel-head">
+      <div>
+        <h2>Available Auth0 Users</h2>
+        <p class="muted">Fetched from Auth0. Users are auto-activated for this workspace on sync or first login.</p>
+      </div>
+      <span class="pill ok">{{ auth0_users|length }} fetched</span>
+    </div>
+    {% if auth0_users_error %}
+      <div class="message message-error">Auth0 user fetch failed: {{ auth0_users_error }}</div>
+    {% elif auth0_users %}
+      <div class="table-shell">
+        <table data-syncfusion-grid="auth0-users" data-grid-height="420" data-grid-page-size="10">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Auth0</th>
+              <th>FDRE Access</th>
+              <th>Last Login</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in auth0_users %}
+              <tr>
+                <td class="mono">{{ user.email }}</td>
+                <td>{{ user.name or "-" }}</td>
+                <td>
+                  <div class="status-stack">
+                    {% if user.blocked %}
+                      <span class="pill critical">blocked</span>
+                    {% else %}
+                      <span class="pill ok">unblocked</span>
+                    {% endif %}
+                    {% if user.email_verified %}
+                      <span class="pill ok">verified</span>
+                    {% else %}
+                      <span class="pill warning">unverified</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  {% if user.fdre_status == "active" %}
+                    <span class="pill ok">active</span>
+                  {% elif user.fdre_status == "inactive" %}
+                    <span class="pill critical">inactive</span>
+                  {% else %}
+                    <span class="pill warning">{{ user.fdre_status }}</span>
+                  {% endif %}
+                  <span class="muted"> / {{ user.fdre_role }}</span>
+                </td>
+                <td class="mono">{{ user.last_login or user.created_at or "-" }}</td>
+                <td class="row-actions">
+                  {% if user.can_reactivate %}
+                    <form method="post" action="{{ url_for('activate_user', email=user.email) }}">
+                      <button class="small ghost" type="submit">Reactivate</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">Default active</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state">No Auth0 users were returned by the Management API.</p>
+    {% endif %}
+  </section>
+{% endif %}
+
+<div class="split compact">
   <section class="panel">
     <div class="panel-head">
       <div>
-        <h2>Activate Auth0 User</h2>
-        <p class="muted">Add the user in Auth0 first, then activate the same email for this workspace.</p>
+        <h2>Activate by Email</h2>
+        <p class="muted">Fallback for a specific Auth0 email. Auth0 must already contain the user.</p>
       </div>
     </div>
     <form method="post" action="{{ url_for('save_user') }}" class="manual-form">
@@ -33,7 +107,7 @@
       <div>
         <h2>Auth0 Identity</h2>
         {% if auth0_management_enabled %}
-          <p class="muted">Management API is configured. This portal verifies existing Auth0 users and toggles access only.</p>
+          <p class="muted">Management API is configured. This portal lists users and toggles FDRE access only.</p>
         {% else %}
           <p class="muted">Management API is not configured. This page toggles FDRE app access for configured users.</p>
         {% endif %}

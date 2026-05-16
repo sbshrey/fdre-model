@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -11,7 +10,7 @@ from urllib.parse import quote
 
 import requests
 
-from fdre_model.web.auth import auth0_client_id, auth0_domain
+from fdre_model.web.auth import auth0_domain
 
 
 DEFAULT_DATABASE_CONNECTION = "Username-Password-Authentication"
@@ -35,14 +34,12 @@ class Auth0ManagementClient:
         domain: str,
         client_id: str,
         client_secret: str,
-        app_client_id: str,
         connection_name: str,
         session: requests.Session | None = None,
     ) -> None:
         self.domain = _normalize_domain(domain)
         self.client_id = client_id.strip()
         self.client_secret = client_secret
-        self.app_client_id = app_client_id.strip()
         self.connection_name = connection_name.strip() or DEFAULT_DATABASE_CONNECTION
         self.session = session or requests.Session()
         self._token: str | None = None
@@ -54,14 +51,12 @@ class Auth0ManagementClient:
         domain = auth0_domain()
         client_id = _env_first("FDRE_AUTH0_MGMT_CLIENT_ID", "AUTH0_MGMT_CLIENT_ID")
         client_secret = _env_first("FDRE_AUTH0_MGMT_CLIENT_SECRET", "AUTH0_MGMT_CLIENT_SECRET")
-        app_client_id = auth0_client_id()
-        if not domain or not client_id or not client_secret or not app_client_id:
+        if not domain or not client_id or not client_secret:
             return None
         return cls(
             domain=domain,
             client_id=client_id,
             client_secret=client_secret,
-            app_client_id=app_client_id,
             connection_name=auth0_connection_name(),
         )
 
@@ -73,26 +68,33 @@ class Auth0ManagementClient:
                 return _user_result(user)
         return _user_result(users[0]) if users else None
 
-    def create_user(self, *, email: str, name: str = "") -> Auth0UserResult:
-        payload: dict[str, Any] = {
-            "connection": self.connection_name,
-            "email": email.strip().lower(),
-            "password": _temporary_password(),
-            "email_verified": False,
-            "verify_email": False,
-        }
-        if name.strip():
-            payload["name"] = name.strip()
-        response = self._management_request("POST", "/api/v2/users", json=payload, expected_statuses={201})
-        if not isinstance(response, dict):
-            raise Auth0ManagementError("Auth0 create user returned an unexpected response.")
-        return _user_result(response)
-
-    def ensure_user(self, *, email: str, name: str = "") -> tuple[Auth0UserResult, bool]:
-        existing = self.find_user_by_email(email)
-        if existing is not None:
-            return existing, False
-        return self.create_user(email=email, name=name), True
+    def list_users(self, *, limit: int = 100) -> list[Auth0UserResult]:
+        users: list[Auth0UserResult] = []
+        page = 0
+        remaining = max(1, limit)
+        while remaining > 0:
+            page_size = min(remaining, 100)
+            response = self._management_request(
+                "GET",
+                "/api/v2/users",
+                params={
+                    "page": page,
+                    "per_page": page_size,
+                    "include_totals": "false",
+                    "fields": "user_id,email,name,nickname,blocked,email_verified,last_login,created_at,identities",
+                    "include_fields": "true",
+                },
+            )
+            batch = response if isinstance(response, list) else []
+            if not batch:
+                break
+            users.extend(_user_result(user) for user in batch if str(user.get("email") or "").strip())
+            if len(batch) < page_size:
+                break
+            remaining -= len(batch)
+            page += 1
+        users.sort(key=lambda item: item.email)
+        return users
 
     def block_user(self, user_id: str, *, blocked: bool = True) -> None:
         self._management_request(
@@ -101,23 +103,6 @@ class Auth0ManagementClient:
             json={"blocked": blocked},
             expected_statuses={200},
         )
-
-    def delete_user(self, user_id: str) -> None:
-        self._management_request("DELETE", f"/api/v2/users/{quote(user_id, safe='')}", expected_statuses={204})
-
-    def send_password_reset_email(self, email: str) -> str:
-        response = self.session.post(
-            f"https://{self.domain}/dbconnections/change_password",
-            json={
-                "client_id": self.app_client_id,
-                "email": email.strip().lower(),
-                "connection": self.connection_name,
-            },
-            timeout=20,
-        )
-        if response.status_code != 200:
-            raise Auth0ManagementError(_response_error(response, "Auth0 password reset email request failed."))
-        return response.text.strip()
 
     def _management_request(
         self,
@@ -203,10 +188,6 @@ def _response_error(response: requests.Response, fallback: str) -> str:
     if isinstance(payload, dict):
         message = str(payload.get("message") or payload.get("error_description") or payload.get("error") or message)
     return f"{message} (HTTP {response.status_code})"
-
-
-def _temporary_password() -> str:
-    return f"{secrets.token_urlsafe(28)}aA1!"
 
 
 def _normalize_domain(domain: str) -> str:

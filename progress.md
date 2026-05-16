@@ -36,6 +36,9 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 10. Restrict portal user management to activation/deactivation.
   - Auth0 remains the source for creating identities, password reset, and identity deletion.
   - FDRE admins can only activate or deactivate workspace access from the portal.
+- [x] 11. Auto-fetch Auth0 users and default them to active FDRE access.
+  - Users added in Auth0 are synced as active FDRE operators by default.
+  - Explicit FDRE deactivation remains a workspace-level deny until an admin reactivates access.
 
 ## Verification Log
 
@@ -57,3 +60,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Added in-app active input editing for source rows and pasted CSV replacements, preserving immutable version history and active-version audit metadata.
 - 2026-05-16: Added Live Board preferred range controls with custom start/live/end preview cycles and default 31-row operating window display.
 - 2026-05-16: Removed portal-side Auth0 creation, password reset, identity deletion, and role-edit UI; Users now only activates or deactivates workspace access.
+- 2026-05-16: Added Auth0 user directory fetch, automatic FDRE activation for new Auth0 users, and first-login auto-provisioning while preserving explicit deactivation.

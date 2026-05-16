@@ -78,8 +78,8 @@ Required EB environment variables:
 - `FDRE_AUTH0_DOMAIN`
 - `FDRE_AUTH0_CLIENT_ID`
 - `FDRE_AUTH0_CLIENT_SECRET`
-- `FDRE_AUTH0_MGMT_CLIENT_ID` for verifying and blocking/unblocking existing Auth0 identities
-- `FDRE_AUTH0_MGMT_CLIENT_SECRET` for verifying and blocking/unblocking existing Auth0 identities
+- `FDRE_AUTH0_MGMT_CLIENT_ID` for listing, verifying, and blocking/unblocking existing Auth0 identities
+- `FDRE_AUTH0_MGMT_CLIENT_SECRET` for listing, verifying, and blocking/unblocking existing Auth0 identities
 - `FDRE_AUTH0_CONNECTION_NAME`, defaults to `Username-Password-Authentication`
 - `FDRE_MODEL_PUBLIC_BASE_URL`
 - `FDRE_HOSTED_BUCKET`
@@ -99,4 +99,4 @@ When Auth0 variables are set, the app uses hosted Auth0 login directly. Configur
 - Allowed Logout URL: `<FDRE_MODEL_PUBLIC_BASE_URL>/login`
 - Allowed Web Origin: `<FDRE_MODEL_PUBLIC_BASE_URL>`
 
-If Management API credentials are also set, FDRE admins can verify existing Auth0 users and activate/deactivate FDRE workspace access from the Users page. Auth0 user creation, password reset, and identity deletion stay in Auth0. Grant the machine-to-machine application only the required Auth0 Management API scopes: `read:users` and `update:users`.
+If Management API credentials are also set, FDRE admins can fetch existing Auth0 users into the Users page. New Auth0 users are auto-activated as FDRE operators by default, while explicit FDRE deactivation remains a workspace-level deny. Auth0 user creation, password reset, and identity deletion stay in Auth0. Grant the machine-to-machine application only the required Auth0 Management API scopes: `read:users` and `update:users`.

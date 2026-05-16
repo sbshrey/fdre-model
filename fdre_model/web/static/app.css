@@ -744,6 +744,12 @@ label span {
   margin: 0;
 }
 
+.status-stack {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.5fr);

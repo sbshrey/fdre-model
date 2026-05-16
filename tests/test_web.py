@@ -20,16 +20,33 @@ class FakeAuth0Management:
         normalized = email.strip().lower()
         if normalized in self.users:
             return self.users[normalized], False
-        user = SimpleNamespace(user_id=f"auth0|{normalized}", email=normalized)
+        user = SimpleNamespace(
+            user_id=f"auth0|{normalized}",
+            email=normalized,
+            raw={
+                "user_id": f"auth0|{normalized}",
+                "email": normalized,
+                "name": name or normalized,
+                "blocked": False,
+                "email_verified": True,
+                "created_at": "2026-05-16T00:00:00.000Z",
+            },
+        )
         self.users[normalized] = user
         self.created.append(normalized)
         return user, True
+
+    def list_users(self, *, limit: int = 100) -> list[SimpleNamespace]:
+        return sorted(self.users.values(), key=lambda user: user.email)[:limit]
 
     def find_user_by_email(self, email: str) -> SimpleNamespace | None:
         return self.users.get(email.strip().lower())
 
     def block_user(self, user_id: str, *, blocked: bool = True) -> None:
         self.blocked.append((user_id, blocked))
+        for user in self.users.values():
+            if user.user_id == user_id:
+                user.raw["blocked"] = blocked
 
     def send_password_reset_email(self, email: str) -> str:
         self.reset.append(email.strip().lower())
@@ -309,7 +326,7 @@ def test_admin_can_manage_workspace_users(tmp_path: Path) -> None:
     admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
     users_page = client.get("/users", headers=admin_headers)
-    assert b"Activate Auth0 User" in users_page.data
+    assert b"Activate by Email" in users_page.data
     assert b"Add or Update User" not in users_page.data
     assert b"Save User" not in users_page.data
     assert b"Reset Password" not in users_page.data
@@ -357,6 +374,13 @@ def test_admin_can_activate_existing_auth0_user_only(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace", auth0_management_client=auth0_management)
     client = app.test_client()
     admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
+    listed = client.get("/users", headers=admin_headers)
+    assert listed.status_code == 200
+    assert b"Available Auth0 Users" in listed.data
+    assert b"operator@example.com" in listed.data
+    assert b"Default active" in listed.data
+    assert b"auth0" in listed.data
 
     saved = client.post(
         "/users/save",
@@ -494,14 +518,6 @@ def test_auth0_mode_uses_app_managed_users(tmp_path: Path, monkeypatch) -> None:
             {"sub": "auth0|admin", "email": "admin@example.com"}
         ).to_session()
 
-    added = client.post(
-        "/users/save",
-        data={"email": "operator@example.com"},
-        follow_redirects=True,
-    )
-    assert added.status_code == 200
-    assert b"operator@example.com" in added.data
-
     with client.session_transaction() as session:
         session[AUTH_SESSION_KEY] = CurrentUser.from_claims(
             {"sub": "auth0|operator", "email": "operator@example.com"}
@@ -512,7 +528,16 @@ def test_auth0_mode_uses_app_managed_users(tmp_path: Path, monkeypatch) -> None:
 
     with client.session_transaction() as session:
         session[AUTH_SESSION_KEY] = CurrentUser.from_claims(
-            {"sub": "auth0|unknown", "email": "unknown@example.com"}
+            {"sub": "auth0|admin", "email": "admin@example.com"}
+        ).to_session()
+
+    removed = client.post("/users/operator@example.com/deactivate", follow_redirects=True)
+    assert removed.status_code == 200
+    assert b"User deactivated" in removed.data
+
+    with client.session_transaction() as session:
+        session[AUTH_SESSION_KEY] = CurrentUser.from_claims(
+            {"sub": "auth0|operator", "email": "operator@example.com"}
         ).to_session()
 
     blocked = client.get("/")

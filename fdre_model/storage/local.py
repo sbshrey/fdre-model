@@ -281,6 +281,7 @@ class LocalWorkspaceStore:
         user_email: str,
         name: str = "",
         notes: str = "",
+        source: str = "admin_ui",
     ) -> AppUser:
         normalized_email = _normalize_email(email)
         if not normalized_email or "@" not in normalized_email:
@@ -299,7 +300,7 @@ class LocalWorkspaceStore:
             role=normalized_role,
             active=active,
             name=name.strip(),
-            source=existing.source if existing and existing.source == "env" else "admin_ui",
+            source=existing.source if existing and existing.source == "env" else source.strip() or "admin_ui",
             created_at=existing.created_at if existing else now,
             created_by=existing.created_by if existing else user_email,
             updated_at=now,
@@ -342,6 +343,7 @@ class LocalWorkspaceStore:
         user_email: str,
         name: str = "",
         notes: str = "",
+        source: str = "admin_ui",
     ) -> AppUser:
         normalized_email = _normalize_email(email)
         if not normalized_email or "@" not in normalized_email:
@@ -357,6 +359,7 @@ class LocalWorkspaceStore:
             user_email=user_email,
             name=existing.name if existing is not None else name,
             notes=existing.notes if existing is not None else notes,
+            source=source,
         )
 
     def load_rules(self, state: Workspace) -> list[RuleDefinition]:
