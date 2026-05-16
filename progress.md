@@ -47,7 +47,7 @@ This file tracks the known gaps between the current MVP and the expected live-re
   - Store these metrics on each decision cycle and expose them on the live board.
 - [x] 14. Implement workbook non-peak rule cases.
   - Cases 2/3/4/5/7: forecast-driven BESS charging, PPA-vs-merchant tariff ordering, and residual BESS/merchant behavior.
-- [ ] 15. Implement workbook peak rule cases.
+- [x] 15. Implement workbook peak rule cases.
   - Cases 6/7 plus Clause 1/iii merchant-for-peak behavior using live peak power and monthly compliance state.
 - [ ] 16. Complete BESS dispatch modeling.
   - Apply BESS degradation/SOH to usable capacity, enforce C-rate constraints, and add residual discharge/arbitrage behavior.
@@ -81,3 +81,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Item 12 completed with a workbook variable/case registry for `M`, `G`, `C`, `T`, `Cap`, `F`, `P`, and case IDs, surfaced on Assumptions and Rules.
 - 2026-05-16: Item 13 completed with P1-P5, monthly 90% peak compliance, 30-day peak forecast, annual generation, and annual CUF metrics stored on each decision cycle and shown on the Live Board.
 - 2026-05-16: Item 14 completed with enabled non-peak workbook dispatch for cases 2/3/4/5/7, using forecast curtailment, BESS headroom, and T1-vs-T2 tariff ordering.
+- 2026-05-16: Item 15 completed with Cap9 live peak-power targets, peak Case 6/7 residual handling, cycle-level monthly 90% peak compliance state, and Clause 1/iii merchant-for-peak support.

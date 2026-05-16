@@ -7,6 +7,7 @@ import pytest
 from fdre_model.config import AppConfig
 from fdre_model.market.aggregation import (
     aggregate_generation,
+    aggregate_live_peak_power,
     build_time_buckets,
     parse_csv_text,
     validate_csv_text,
@@ -49,6 +50,24 @@ def test_kw_source_is_converted_using_inferred_interval() -> None:
     aggregated = aggregate_generation(rows, buckets)
 
     assert aggregated[datetime(2026, 4, 1, 12, 0)] == pytest.approx(1.0)
+
+
+def test_peak_schedule_can_carry_optional_live_peak_power() -> None:
+    config = AppConfig()
+    buckets = build_time_buckets(config, now=datetime(2026, 4, 1, 18, 0))
+    text = "\n".join(
+        [
+            "timestamp,is_peak,live_peak_power_mwh",
+            "2026-04-01 18:00,1,120",
+        ]
+    )
+    rows = parse_csv_text(text, dataset_kind="peak_schedule").rows
+
+    live_peak_power = aggregate_live_peak_power(rows, buckets, default=150.0)
+
+    assert rows[0]["is_peak"] is True
+    assert rows[0]["live_peak_power_mwh"] == 120.0
+    assert live_peak_power[datetime(2026, 4, 1, 18, 0)] == 120.0
 
 
 def test_duplicate_timestamps_are_rejected() -> None:

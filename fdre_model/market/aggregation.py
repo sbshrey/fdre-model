@@ -21,6 +21,7 @@ PRICE_COLUMNS = ("price", "merchant_price", "t2_price", "tariff", "value")
 SOC_COLUMNS = ("soc_mwh", "bess_soc_mwh", "value_mwh", "value")
 SOH_COLUMNS = ("soh_fraction", "bess_soh_fraction", "soh", "state_of_health")
 PEAK_COLUMNS = ("is_peak", "peak", "flag_peak", "peak_flag")
+LIVE_PEAK_POWER_COLUMNS = ("live_peak_power_mwh", "peak_power_mwh", "cap9_mwh", "live_peak_power")
 TIMESTAMP_COLUMNS = ("timestamp", "date_time", "date & time stamp", "time stamp", "datetime")
 SUPPORTED_SOURCE_INTERVAL_SECONDS = (60.0, 15.0 * 60.0, 60.0 * 60.0)
 
@@ -169,6 +170,23 @@ def aggregate_peak_schedule(rows: list[dict[str, object]], buckets: list[TimeBuc
     return result
 
 
+def aggregate_live_peak_power(
+    rows: list[dict[str, object]],
+    buckets: list[TimeBucket],
+    *,
+    default: float,
+) -> dict[datetime, float]:
+    result = {bucket.start: float(default) for bucket in buckets}
+    for row in rows:
+        timestamp = row["timestamp"]
+        assert isinstance(timestamp, datetime)
+        target = _find_bucket(timestamp, buckets)
+        if target is None or row.get("live_peak_power_mwh") in (None, ""):
+            continue
+        result[target.start] = max(float(row.get("live_peak_power_mwh") or default), 0.0)
+    return result
+
+
 def latest_bess_state(
     rows: list[dict[str, object]],
     buckets: list[TimeBucket],
@@ -228,7 +246,11 @@ def _normalize_payload(row: dict[str, str], dataset_kind: str) -> dict[str, obje
         raw = _first(row, PEAK_COLUMNS)
         if raw in (None, ""):
             raise ValueError("Peak schedule CSV needs is_peak.")
-        return {"is_peak": _parse_bool(raw)}
+        payload: dict[str, object] = {"is_peak": _parse_bool(raw)}
+        live_peak_power = _first(row, LIVE_PEAK_POWER_COLUMNS)
+        if live_peak_power not in (None, ""):
+            payload["live_peak_power_mwh"] = float(live_peak_power)
+        return payload
     raise ValueError(f"Unsupported dataset kind: {dataset_kind}")
 
 

@@ -64,8 +64,8 @@ INPUT_SPECS: tuple[InputSpec, ...] = (
     InputSpec(
         key="peak_schedule",
         label="Peak Schedule",
-        description="User-configured peak/non-peak flag by interval.",
-        expected_headers=("timestamp", "is_peak"),
+        description="User-configured peak/non-peak flag by interval, with optional live peak power target.",
+        expected_headers=("timestamp", "is_peak", "live_peak_power_mwh"),
         kind="peak_schedule",
     ),
 )

@@ -202,6 +202,118 @@ def test_non_peak_cases4_and5_choose_sale_order_from_t1_vs_t2() -> None:
     assert any("tariff_order=merchant>ppa" in item for item in current.audit_trace)
 
 
+def test_peak_case6_uses_live_peak_power_and_sells_residual() -> None:
+    config = AppConfig(
+        capacities=CapacitySettings(solar_mwh=300.0, ppa_mwh=150.0, merchant_mwh=35.0, peak_power_mwh=150.0)
+    )
+    inputs = ActiveInputData(
+        solar_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "mwh": 180.0}],
+        wind_rows=[],
+        bess_rows=[],
+        price_rows=[],
+        peak_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "is_peak": True, "live_peak_power_mwh": 120.0}],
+        version_ids={},
+    )
+
+    decisions, _ = build_decisions(config, inputs, list(DEFAULT_RULES), now=datetime(2026, 4, 1, 18, 0))
+    current = next(item for item in decisions if item.interval_start == datetime(2026, 4, 1, 18, 0))
+
+    assert current.peak_power_sale_mwh == 120.0
+    assert current.ppa_sale_mwh == 60.0
+    assert current.shortfall_mwh == 0.0
+    assert any("live_peak_target=120.000" in item for item in current.audit_trace)
+
+
+def test_peak_case7_uses_bess_against_live_peak_power_gap() -> None:
+    config = AppConfig(
+        capacities=CapacitySettings(
+            bess_capacity_mwh=100.0,
+            bess_discharge_limit_mwh=50.0,
+            peak_power_mwh=150.0,
+        )
+    )
+    inputs = ActiveInputData(
+        solar_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "mwh": 80.0}],
+        wind_rows=[],
+        bess_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "soc_mwh": 50.0, "soh_fraction": 1.0}],
+        price_rows=[],
+        peak_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "is_peak": True, "live_peak_power_mwh": 120.0}],
+        version_ids={},
+    )
+
+    decisions, _ = build_decisions(config, inputs, list(DEFAULT_RULES), now=datetime(2026, 4, 1, 18, 0))
+    current = next(item for item in decisions if item.interval_start == datetime(2026, 4, 1, 18, 0))
+
+    assert current.peak_power_sale_mwh == 120.0
+    assert current.bess_discharge_mwh == 40.0
+    assert current.shortfall_mwh == 0.0
+    assert any("bess_discharge=40.000" in item for item in current.audit_trace)
+
+
+def test_clause_1_iii_uses_cheap_merchant_power_for_peak_compliance_gap() -> None:
+    config = AppConfig(
+        capacities=CapacitySettings(
+            merchant_mwh=35.0,
+            bess_capacity_mwh=100.0,
+            bess_discharge_limit_mwh=50.0,
+            peak_power_mwh=150.0,
+        ),
+        tariffs=TariffSettings(ppa=6.0, merchant_sell_default=5.0, peak_power=7.0, penalty_multiplier=1.5),
+        state=StateSettings(initial_bess_soc_mwh=0.0, initial_bess_soh_fraction=1.0),
+    )
+    inputs = ActiveInputData(
+        solar_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "mwh": 50.0}],
+        wind_rows=[],
+        bess_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "soc_mwh": 0.0, "soh_fraction": 1.0}],
+        price_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "price": 5.0}],
+        peak_rows=[{"timestamp": datetime(2026, 4, 1, 18, 0), "is_peak": True, "live_peak_power_mwh": 120.0}],
+        version_ids={},
+    )
+
+    decisions, _ = build_decisions(config, inputs, list(DEFAULT_RULES), now=datetime(2026, 4, 1, 18, 0))
+    current = next(item for item in decisions if item.interval_start == datetime(2026, 4, 1, 18, 0))
+
+    assert current.peak_power_sale_mwh == 85.0
+    assert current.shortfall_mwh == 35.0
+    assert any("merchant_for_peak=35.000" in item for item in current.audit_trace)
+    assert current.revenue_value == (85.0 * 7.0) - (35.0 * 5.0)
+
+
+def test_clause_1_iii_skips_merchant_when_monthly_peak_compliance_is_already_met() -> None:
+    config = AppConfig(
+        capacities=CapacitySettings(merchant_mwh=35.0, peak_power_mwh=100.0),
+        tariffs=TariffSettings(ppa=6.0, merchant_sell_default=5.0, peak_power=7.0, penalty_multiplier=1.5),
+        state=StateSettings(initial_bess_soc_mwh=0.0, initial_bess_soh_fraction=1.0),
+    )
+    inputs = ActiveInputData(
+        solar_rows=[
+            {"timestamp": datetime(2026, 4, 1, 18, 0), "mwh": 120.0},
+            {"timestamp": datetime(2026, 4, 1, 19, 0), "mwh": 80.0},
+        ],
+        wind_rows=[],
+        bess_rows=[
+            {"timestamp": datetime(2026, 4, 1, 18, 0), "soc_mwh": 0.0, "soh_fraction": 1.0},
+            {"timestamp": datetime(2026, 4, 1, 19, 0), "soc_mwh": 0.0, "soh_fraction": 1.0},
+        ],
+        price_rows=[
+            {"timestamp": datetime(2026, 4, 1, 18, 0), "price": 5.0},
+            {"timestamp": datetime(2026, 4, 1, 19, 0), "price": 5.0},
+        ],
+        peak_rows=[
+            {"timestamp": datetime(2026, 4, 1, 18, 0), "is_peak": True, "live_peak_power_mwh": 100.0},
+            {"timestamp": datetime(2026, 4, 1, 19, 0), "is_peak": True, "live_peak_power_mwh": 100.0},
+        ],
+        version_ids={},
+    )
+
+    decisions, _ = build_decisions(config, inputs, list(DEFAULT_RULES), now=datetime(2026, 4, 1, 19, 0))
+    current = next(item for item in decisions if item.interval_start == datetime(2026, 4, 1, 19, 0))
+
+    assert current.peak_power_sale_mwh == 80.0
+    assert current.shortfall_mwh == 20.0
+    assert all("merchant_for_peak=0.000" in item for item in current.audit_trace if "peak_power_obligation:" in item)
+
+
 def test_future_rule_pack_placeholders_are_available_but_disabled() -> None:
     future_rule_ids = {
         "annual_cuf_monitor",

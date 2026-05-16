@@ -23,5 +23,5 @@ def test_workbook_case_registry_covers_peak_non_peak_and_procurement_cases() -> 
 
     assert {"Case 2", "Case 3", "Cases 4/5", "Case 6/7", "Clause 1/iii"}.issubset(codes)
     assert {"Case 8", "Cases 9/10", "Cases 11/12"}.issubset(codes)
-    assert any(row["scope"] == "Peak" and row["status"] == "partial" for row in rows)
+    assert any(row["scope"] == "Peak" and row["status"] == "implemented" for row in rows)
     assert any(row["scope"] == "Annual CUF" and row["status"] == "planned" for row in rows)

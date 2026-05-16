@@ -903,6 +903,12 @@ def _canonical_input_rows(text: str, spec: InputSpec) -> list[dict[str, str]]:
             canonical["price"] = _format_input_number(row.get("price"))
         elif spec.kind == "peak_schedule":
             canonical["is_peak"] = "1" if bool(row.get("is_peak")) else "0"
+            if "live_peak_power_mwh" in spec.expected_headers:
+                canonical["live_peak_power_mwh"] = (
+                    _format_input_number(row.get("live_peak_power_mwh"))
+                    if row.get("live_peak_power_mwh") not in (None, "")
+                    else ""
+                )
         else:
             raise ValueError(f"Unsupported input dataset kind: {spec.kind}")
         rows.append(canonical)
@@ -1020,6 +1026,8 @@ def _floor_hour(value: datetime) -> datetime:
 def _clean_input_value(value: object, spec: InputSpec, header: str) -> str:
     if spec.kind == "peak_schedule" and header == "is_peak":
         return "1" if str(value).strip().lower() in {"1", "true", "yes", "y", "peak"} else "0"
+    if spec.kind == "peak_schedule" and header == "live_peak_power_mwh" and str(value or "").strip() == "":
+        return ""
     return _format_input_number(value)
 
 
@@ -1174,10 +1182,13 @@ def _why_steps(
 ) -> list[str]:
     steps: list[str] = []
     if is_peak:
-        generation_to_peak = max(peak_sale - bess_discharge, 0.0)
+        generation_to_peak = min(available, max(peak_sale - bess_discharge, 0.0))
+        merchant_for_peak = max(peak_sale - generation_to_peak - bess_discharge, 0.0)
         steps.append(f"Peak rule ran first and used {_format_mwh(generation_to_peak)} from available generation.")
         if bess_discharge > 0:
             steps.append(f"BESS discharged {_format_mwh(bess_discharge)} to reduce the peak obligation gap.")
+        if merchant_for_peak > 0:
+            steps.append(f"Merchant power contributed {_format_mwh(merchant_for_peak)} under the peak compliance rule.")
         if shortfall > 0:
             steps.append(f"Peak obligation still has {_format_mwh(shortfall)} shortfall, so penalty exposure is recorded.")
     else:

@@ -129,6 +129,9 @@ class RuleContext:
         peak_tariff: float,
         penalty_multiplier: float,
         forecast_curtailment_mwh_by_start: dict[object, float] | None = None,
+        live_peak_power_mwh_by_start: dict[object, float] | None = None,
+        monthly_peak_compliance_fraction: float = 0.9,
+        merchant_for_peak_price_fraction: float = 0.8,
     ) -> None:
         self.ppa_cap_mwh = float(ppa_cap_mwh)
         self.merchant_cap_mwh = float(merchant_cap_mwh)
@@ -142,6 +145,11 @@ class RuleContext:
         self.peak_tariff = float(peak_tariff)
         self.penalty_multiplier = float(penalty_multiplier)
         self.forecast_curtailment_mwh_by_start = forecast_curtailment_mwh_by_start or {}
+        self.live_peak_power_mwh_by_start = live_peak_power_mwh_by_start or {}
+        self.monthly_peak_compliance_fraction = float(monthly_peak_compliance_fraction)
+        self.merchant_for_peak_price_fraction = float(merchant_for_peak_price_fraction)
+        self.monthly_peak_delivered_mwh: dict[str, float] = {}
+        self.monthly_peak_obligation_mwh: dict[str, float] = {}
 
 
 def evaluate_rules(
@@ -311,7 +319,7 @@ def _bool_value(value: object) -> bool:
 def _apply_peak_power(decision: MarketDecision, state: OperatingState, context: RuleContext, rule_id: str) -> None:
     if not decision.is_peak:
         return
-    target = context.peak_cap_mwh
+    target = _live_peak_target(decision, context)
     from_generation = min(decision.residual_mwh, target)
     decision.peak_power_sale_mwh += from_generation
     decision.residual_mwh -= from_generation
@@ -326,15 +334,65 @@ def _apply_peak_power(decision: MarketDecision, state: OperatingState, context: 
         decision.bess_discharge_mwh += delivered_from_bess
         decision.peak_power_sale_mwh += delivered_from_bess
         remaining -= delivered_from_bess
+    merchant_for_peak = 0.0
+    if remaining > 0.0 and _should_use_merchant_for_peak(decision, context, target):
+        merchant_for_peak = min(remaining, context.merchant_cap_mwh)
+        decision.peak_power_sale_mwh += merchant_for_peak
+        remaining -= merchant_for_peak
+        decision.revenue_value -= merchant_for_peak * decision.merchant_price
     if remaining > 0.0:
         decision.shortfall_mwh += remaining
         decision.penalty_value += remaining * context.ppa_tariff * context.penalty_multiplier
-    if from_generation > 0.0 or delivered_from_bess > 0.0 or remaining > 0.0:
+    _record_monthly_peak_state(decision, context, target)
+    if from_generation > 0.0 or delivered_from_bess > 0.0 or merchant_for_peak > 0.0 or remaining > 0.0:
         decision.applied_rule_ids.append(rule_id)
         decision.audit_trace.append(
-            f"{rule_id}: peak_sale={decision.peak_power_sale_mwh:.3f}, bess_discharge={delivered_from_bess:.3f}, shortfall={remaining:.3f}"
+            (
+                f"{rule_id}: live_peak_target={target:.3f}, "
+                f"generation_to_peak={from_generation:.3f}, "
+                f"bess_discharge={delivered_from_bess:.3f}, "
+                f"merchant_for_peak={merchant_for_peak:.3f}, "
+                f"shortfall={remaining:.3f}, "
+                f"monthly_peak_compliance={_monthly_peak_compliance_pct(decision, context):.3f}%"
+            )
         )
         decision.revenue_value += decision.peak_power_sale_mwh * context.peak_tariff
+
+
+def _live_peak_target(decision: MarketDecision, context: RuleContext) -> float:
+    value = float(context.live_peak_power_mwh_by_start.get(decision.interval_start, context.peak_cap_mwh))
+    return value if value > 0.0 else context.peak_cap_mwh
+
+
+def _should_use_merchant_for_peak(decision: MarketDecision, context: RuleContext, target: float) -> bool:
+    if context.merchant_cap_mwh <= 0.0:
+        return False
+    if decision.merchant_price > context.peak_tariff * context.merchant_for_peak_price_fraction:
+        return False
+    month_key = _month_key(decision)
+    projected_obligation = context.monthly_peak_obligation_mwh.get(month_key, 0.0) + target
+    projected_delivered = context.monthly_peak_delivered_mwh.get(month_key, 0.0) + decision.peak_power_sale_mwh
+    return projected_delivered < projected_obligation * context.monthly_peak_compliance_fraction
+
+
+def _record_monthly_peak_state(decision: MarketDecision, context: RuleContext, target: float) -> None:
+    month_key = _month_key(decision)
+    context.monthly_peak_obligation_mwh[month_key] = context.monthly_peak_obligation_mwh.get(month_key, 0.0) + target
+    context.monthly_peak_delivered_mwh[month_key] = (
+        context.monthly_peak_delivered_mwh.get(month_key, 0.0) + decision.peak_power_sale_mwh
+    )
+
+
+def _monthly_peak_compliance_pct(decision: MarketDecision, context: RuleContext) -> float:
+    month_key = _month_key(decision)
+    obligation = context.monthly_peak_obligation_mwh.get(month_key, 0.0)
+    if obligation <= 0.0:
+        return 0.0
+    return context.monthly_peak_delivered_mwh.get(month_key, 0.0) / obligation * 100.0
+
+
+def _month_key(decision: MarketDecision) -> str:
+    return decision.interval_start.strftime("%Y-%m")
 
 
 def _apply_non_peak_workbook_dispatch(

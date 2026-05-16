@@ -42,7 +42,7 @@ Implemented well:
 - Assumption UI for core capacities, tariffs, BESS losses, peak hours, and operating window.
 - Rule priority ordering, enable/disable, conflict trace, and row-level why explanation.
 - Workbook-aligned variable registry and decision-cycle forecast/compliance metrics for `P1-P5`, monthly peak compliance, annual generation, annual CUF, and 30-day peak forecast.
-- Core v1 allocation: peak obligation first in peak hours, then PPA, merchant, BESS charge, curtailment.
+- Core v1 allocation: workbook non-peak dispatch, peak obligation using live peak target, residual PPA/merchant/BESS handling, curtailment, and shortfall.
 - Decision-cycle artifacts and audit metadata.
 - Auth0 login and default-active Auth0 user sync.
 
@@ -82,7 +82,7 @@ The workbook uses derived forecast parameters:
 
 Status update: implemented after this review. Each decision cycle now stores workbook-derived `P1-P5`, 30-day peak forecast, and 365-day generation metrics, and the Live Board shows them in a Workbook Metrics panel.
 
-Remaining gap: these metrics are visible/exported and now feed non-peak cases. Peak allocation, procurement, and penalty-minimization rules still need to consume them for workbook-parity decisions.
+Remaining gap: these metrics are visible/exported and now feed non-peak and peak cases. Procurement and penalty-minimization rules still need to consume them for workbook-parity decisions.
 
 ### 4. Compliance Calculations Are Placeholders
 
@@ -106,18 +106,16 @@ Status update: implemented after this review. The app now includes an enabled `n
 
 Remaining gap: merchant sale beyond configured capacity is still deferred until compliance-driven merchant/procurement rules are implemented.
 
-### 6. Peak Rule Cases Are Only Partially Implemented
+### 6. Peak Rule Cases Are Implemented For V1 Dispatch
 
-Current peak behavior allocates available generation to peak power first, uses BESS discharge for shortfall, and records penalty exposure.
+Status update: implemented after this review. The app now uses:
 
-Workbook peak behavior requires:
+- Optional `live_peak_power_mwh` on the Peak Schedule input for `Cap9`, falling back to configured `Cap10`.
+- Case 6/7 handling: solar/wind meet peak first; if generation exceeds live peak power, residual flows to lower sale/storage rules; if generation is short, BESS discharges against the live peak gap.
+- Cycle-level monthly 90% peak compliance state.
+- Clause 1/iii merchant-for-peak support when monthly peak compliance has a gap and live `T2` is below `0.8 x T3`.
 
-- Case 6/7 branching.
-- 90% monthly peak compliance target.
-- Merchant use for peak power under Clause 1/iii.
-- Peak-specific use of live peak power capacity (`Cap9`) and contracted peak power (`Cap10`).
-
-Impact: peak hour conduct is not yet workbook-complete.
+Remaining gap: separate merchant-buy/procurement market outputs and penalty-minimization rule packs are still deferred.
 
 ### 7. BESS Modeling Is Not Workbook-Complete
 
@@ -159,7 +157,6 @@ Impact: changes can be correct against code behavior while still drifting from t
 ## Recommended Work Order
 
 1. Add a workbook-aligned variable registry and expose it in assumptions/rules.
-2. Implement peak cases 6/7 and Clause 1/iii merchant-for-peak logic.
-3. Add workbook-complete BESS behavior: degradation, SOH capacity adjustment, C-rate, residual discharge, and arbitrage.
-4. Implement merchant buy/procurement rules for penalty minimization and annual CUF.
-5. Add workbook parity tests using representative rows from `MODEL v2`.
+2. Add workbook-complete BESS behavior: degradation, SOH capacity adjustment, C-rate, residual discharge, and arbitrage.
+3. Implement merchant buy/procurement rules for penalty minimization and annual CUF.
+4. Add workbook parity tests using representative rows from `MODEL v2`.

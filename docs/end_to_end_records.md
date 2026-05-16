@@ -38,7 +38,7 @@ The current V1 input pipeline uses versioned CSV inputs. Every upload/manual edi
 | `wind` | `timestamp,mwh` | Wind generation available in the interval. |
 | `bess_state` | `timestamp,soc_mwh,soh_fraction` | Battery state of charge and health. |
 | `t2_pricing` | `timestamp,price` | Merchant/T2 sale price for the interval. |
-| `peak_schedule` | `timestamp,is_peak` | Peak/non-peak flag by interval. |
+| `peak_schedule` | `timestamp,is_peak,live_peak_power_mwh` | Peak/non-peak flag by interval; live peak power is optional and falls back to configured peak power. |
 
 The default sample inputs have 8,760 hourly rows each, covering `2026-01-01 00:00:00` through `2026-12-31 23:00:00`.
 
@@ -127,7 +127,7 @@ Rules are evaluated top-down by priority. Higher-priority rules allocate first; 
 
 | Priority | Rule ID | Enabled | Condition | Action | Behavior |
 | ---: | --- | --- | --- | --- | --- |
-| `10` | `peak_power_obligation` | Yes | `is_peak = true` | `allocate_peak_power` | During peak, allocate generation to peak obligation first, then use BESS, then record shortfall and penalty. |
+| `10` | `peak_power_obligation` | Yes | `is_peak = true` | `allocate_peak_power` | During peak, use live peak target first, then BESS, then eligible merchant-for-peak, then record shortfall and penalty. |
 | `15` | `non_peak_workbook_dispatch` | Yes | non-peak, residual exists, no earlier allocation | `allocate_non_peak_workbook` | Applies workbook non-peak cases 2/3/4/5/7 using forecast curtailment, BESS headroom, and T1-vs-T2 tariff order. |
 | `20` | `ppa_sale` | Yes | `min_residual_mwh = 0.000001` | `sell_ppa` | Sell residual energy to PPA up to `ppa_mwh`. |
 | `30` | `merchant_sale` | Yes | `min_residual_mwh = 0.000001` | `sell_merchant` | Sell remaining residual to merchant up to `merchant_mwh`. |
@@ -141,7 +141,8 @@ Rules are evaluated top-down by priority. Higher-priority rules allocate first; 
 
 Important V1 behavior:
 
-- Peak rows prioritize peak obligation before PPA or merchant.
+- Peak rows prioritize live peak power before PPA or merchant. `live_peak_power_mwh` from Peak Schedule is used when present; otherwise configured `peak_power_mwh` is the fallback.
+- If peak generation is short, BESS discharges first. Merchant power can then support peak only when the cycle-level monthly 90% peak compliance state still has a gap and live `T2` is less than `0.8 x T3`.
 - Non-peak rows skip peak obligation and use the workbook dispatch rule by default.
 - If forecast curtailment before the next peak can cover BESS headroom, non-peak residual is sold before charging. If it cannot, BESS charging is prioritized.
 - PPA versus merchant sale order is selected from `T1` PPA tariff versus the interval `T2` merchant price.
@@ -163,7 +164,7 @@ residual_mwh starts as available_mwh
 Peak obligation:
 
 ```text
-target = peak_power_mwh
+target = live_peak_power_mwh or peak_power_mwh
 from_generation = min(residual_mwh, target)
 residual_mwh -= from_generation
 remaining = target - from_generation
@@ -176,7 +177,15 @@ delivered_from_bess = min(
 
 soc_draw = delivered_from_bess / (1 - discharge_loss_fraction)
 bess_close_mwh = bess_open_mwh - soc_draw
-shortfall_mwh = remaining - delivered_from_bess
+remaining -= delivered_from_bess
+
+if monthly_90pct_peak_compliance_gap_exists and merchant_price <= 0.8 * peak_power_tariff:
+    merchant_for_peak = min(remaining, merchant_mwh)
+    peak_power_sale_mwh += merchant_for_peak
+    remaining -= merchant_for_peak
+    revenue_value -= merchant_for_peak * merchant_price
+
+shortfall_mwh = remaining
 penalty_value = shortfall_mwh * ppa_tariff * penalty_multiplier
 peak_revenue = peak_power_sale_mwh * peak_power_tariff
 ```

@@ -8,6 +8,7 @@ from datetime import datetime
 from fdre_model.config import AppConfig
 from fdre_model.market.aggregation import (
     aggregate_generation,
+    aggregate_live_peak_power,
     aggregate_peak_schedule,
     aggregate_prices,
     build_time_buckets,
@@ -48,6 +49,11 @@ def build_decisions(
     peak_schedule = aggregate_peak_schedule(active_inputs.peak_rows, buckets) if active_inputs.peak_rows else {
         bucket.start: bucket.is_peak for bucket in buckets
     }
+    live_peak_power = aggregate_live_peak_power(
+        active_inputs.peak_rows,
+        buckets,
+        default=config.capacities.peak_power_mwh,
+    )
     bess_states = latest_bess_state(
         active_inputs.bess_rows,
         buckets,
@@ -69,6 +75,7 @@ def build_decisions(
         peak_tariff=config.tariffs.peak_power,
         penalty_multiplier=config.tariffs.penalty_multiplier,
         forecast_curtailment_mwh_by_start=forecast_curtailment,
+        live_peak_power_mwh_by_start=live_peak_power,
     )
 
     decisions: list[MarketDecision] = []
