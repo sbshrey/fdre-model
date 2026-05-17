@@ -14,7 +14,7 @@
     <div class="panel-head">
       <div>
         <h2>Available Auth0 Users</h2>
-        <p class="muted">Fetched from Auth0. Users are auto-activated for this workspace on sync or first login.</p>
+        <p class="muted">Fetched from Auth0. Users are auto-activated for this client on sync or first login.</p>
       </div>
       <span class="pill ok">{{ auth0_users|length }} fetched</span>
     </div>
@@ -140,12 +140,12 @@
 <section class="panel compact">
   <div class="panel-head">
     <div>
-      <h2>Workspace Users</h2>
+      <h2>Client Users</h2>
       <p class="muted">{{ users|length }} configured users</p>
     </div>
   </div>
   <div class="table-shell">
-    <table data-syncfusion-grid="workspace-users" data-grid-height="520" data-grid-page-size="10">
+    <table data-syncfusion-grid="client-users" data-grid-height="520" data-grid-page-size="10">
       <thead>
         <tr>
           <th>Email</th>

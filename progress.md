@@ -38,7 +38,7 @@ This file tracks the known gaps between the current MVP and the expected live-re
   - FDRE admins can only activate or deactivate workspace access from the portal.
 - [x] 11. Auto-fetch Auth0 users and default them to active FDRE access.
   - Users added in Auth0 are synced as active FDRE operators by default.
-  - Explicit FDRE deactivation remains a workspace-level deny until an admin reactivates access.
+  - Explicit FDRE deactivation remains a client-level deny until an admin reactivates access.
 - [x] 12. Add workbook-aligned variable registry.
   - Map `M`, `G`, `C`, `T`, `Cap`, `P`, and case identifiers from the `Notes` sheet into named app assumptions and rule inputs.
   - Surface the registry in assumptions/rules so workbook language and app language stay auditable.
@@ -55,6 +55,18 @@ This file tracks the known gaps between the current MVP and the expected live-re
   - Penalty minimization, annual CUF + 10%, 5% annual procurement cap, and GDAM/other market placeholders.
 - [ ] 18. Add workbook parity tests.
   - Build representative `MODEL v2` scenarios and assert app allocations match workbook rules for peak and non-peak cases.
+- [x] 19. Add portfolio-ready client/project operations foundation.
+  - Treat `customer_id` as the client and `workspace_id` as the project.
+  - Add a customer portfolio registry, project selector, project creation, and project roll-up board.
+- [x] 20. Move FDRE access control to the client level for V2.
+  - Auth0 users remain active by default for the client.
+  - Explicit deactivation blocks access across all projects under that client.
+- [x] 21. Add Live Board operating presets.
+  - Running, intraday, day-ahead, and custom windows reuse the same advisory engine.
+- [x] 22. Add V2 soft data-quality gate.
+  - Decision cycles record ok/warning/critical advisory status while still rendering recommendations.
+- [x] 23. Add project-level feed catalog metadata.
+  - Store future live feed protocol/frequency/fallback/owner metadata without implementing connectors yet.
 
 ## Verification Log
 
@@ -82,3 +94,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Item 13 completed with P1-P5, monthly 90% peak compliance, 30-day peak forecast, annual generation, and annual CUF metrics stored on each decision cycle and shown on the Live Board.
 - 2026-05-16: Item 14 completed with enabled non-peak workbook dispatch for cases 2/3/4/5/7, using forecast curtailment, BESS headroom, and T1-vs-T2 tariff ordering.
 - 2026-05-16: Item 15 completed with Cap9 live peak-power targets, peak Case 6/7 residual handling, cycle-level monthly 90% peak compliance state, and Clause 1/iii merchant-for-peak support.
+- 2026-05-17: Items 19-23 completed with portfolio registry, client-level users, project selector, project creation, run presets, data-quality gate, feed catalog metadata, hosted project persistence, and regression coverage.

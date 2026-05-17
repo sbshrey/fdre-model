@@ -100,3 +100,34 @@ def test_hosted_persistence_can_use_customer_workspace_dynamo_keys(tmp_path: Pat
     assert table.items[0]["customer_id"] == "acme"
     assert table.items[0]["workspace_id"] == "plant-a#INPUT_VERSION#solar#v1"
     assert table.items[0]["workspace_key"] == "plant-a"
+
+
+def test_hosted_persistence_writes_customer_portfolio_metadata() -> None:
+    s3 = FakeS3()
+    table = FakeTable()
+    persistence = HostedPersistence(
+        HostedStorageConfig(bucket="fdre-test", dynamodb_table="fdre-index", prefix="tenant-data"),
+        s3_client=s3,
+        dynamodb_resource=FakeDynamo(table),
+    )
+
+    persistence.persist_customer_portfolio(
+        "Acme Energy",
+        {
+            "customer_id": "acme-energy",
+            "updated_at": "2026-05-17T00:00:00Z",
+            "projects": [
+                {
+                    "project_id": "plant-a",
+                    "name": "Plant A",
+                    "status": "active",
+                    "created_at": "2026-05-17T00:00:00Z",
+                }
+            ],
+        },
+    )
+
+    assert "tenant-data/customers/acme-energy/portfolio/projects.json" in s3.objects
+    assert table.items[0]["pk"] == "CUSTOMER#acme-energy"
+    assert table.items[0]["sk"] == "PROJECT#plant-a"
+    assert table.items[0]["item_type"] == "PROJECT"

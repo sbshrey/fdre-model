@@ -43,6 +43,7 @@
         disableHtmlEncode: false,
         minWidth: index === 0 ? 150 : 110,
         width: header.dataset.gridWidth ? Number(header.dataset.gridWidth) : undefined,
+        visible: header.dataset.gridHidden !== "true",
         clipMode: "EllipsisWithTooltip"
       };
     });

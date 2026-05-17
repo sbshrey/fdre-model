@@ -76,7 +76,9 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Why" in live.data
     assert b"default 6 actual + 1 live + 24 forecast = 31" in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data
-    assert b'class="why-column" data-grid-width="360">Why' in live.data
+    assert b'<th data-grid-width="190">Interval</th>' in live.data
+    assert b'class="why-column" data-grid-width="320">Why' in live.data
+    assert b'data-grid-hidden="true">Wind' in live.data
     assert b"Rule path" in live.data
     assert b"Technical audit" not in live.data
     assert b"PPA selected" in live.data or b"Peak obligation" in live.data
@@ -526,6 +528,133 @@ def test_workspace_headers_isolate_live_board_state(tmp_path: Path) -> None:
     assert b"Workspace acme/plant-b" in plant_b.data
     assert (tmp_path / ".workspace" / "customers" / "acme" / "workspaces" / "plant-a").exists()
     assert (tmp_path / ".workspace" / "customers" / "acme" / "workspaces" / "plant-b").exists()
+
+
+def test_portfolio_page_creates_selects_and_scopes_projects(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+    admin_headers = {
+        "X-User-Email": "admin@example.com",
+        "X-User-Role": "admin",
+        "X-Customer-Id": "Acme",
+        "X-Workspace-Id": "Plant A",
+    }
+
+    portfolio = client.get("/portfolio", headers=admin_headers)
+    assert portfolio.status_code == 200
+    assert b"FDRE Project Operations" in portfolio.data
+    assert b"Add Project" in portfolio.data
+    assert b'id="add-project"' in portfolio.data
+    assert b"Plant A" in portfolio.data or b"plant-a" in portfolio.data
+
+    created = client.post(
+        "/portfolio/projects/create",
+        headers=admin_headers,
+        data={
+            "project_id": "Plant B",
+            "name": "Plant B FDRE",
+            "offtaker": "SJVN",
+            "location": "North",
+            "contract_label": "FDRE PPA",
+            "capacity_summary": "Wind 100 MW | Solar 50 MW | BESS 50 MWh",
+        },
+        follow_redirects=True,
+    )
+
+    assert created.status_code == 200
+    assert b"Project created" in created.data
+    assert b"Plant B FDRE" in created.data
+
+    duplicate = client.post(
+        "/portfolio/projects/create",
+        headers=admin_headers,
+        data={"project_id": "Plant B", "name": "Duplicate"},
+        follow_redirects=True,
+    )
+    assert b"Project already exists" in duplicate.data
+
+    selected = client.post(
+        "/portfolio/select",
+        headers=admin_headers,
+        data={"project_id": "plant-b", "next": "/inputs"},
+        follow_redirects=True,
+    )
+
+    assert selected.status_code == 200
+    assert b"Solar Generation" in selected.data
+    live = client.get("/live", headers=admin_headers)
+    assert b"Workspace acme/plant-b" in live.data
+    assert (tmp_path / ".workspace" / "customers" / "acme" / "workspaces" / "plant-a").exists()
+    assert (tmp_path / ".workspace" / "customers" / "acme" / "workspaces" / "plant-b").exists()
+
+
+def test_live_board_run_presets(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    intraday = client.get("/live?preset=intraday&live_at=2026-01-01T10:00")
+    assert intraday.status_code == 200
+    assert b"intraday" in intraday.data
+    assert b"0 actual + 1 live + 8 forecast = 9" in intraday.data
+
+    day_ahead = client.get("/live?preset=day_ahead&live_at=2026-01-01T10:00")
+    assert day_ahead.status_code == 200
+    assert b"day-ahead" in day_ahead.data
+    assert b"0 actual + 0 live + 24 forecast = 24" in day_ahead.data
+
+
+def test_data_quality_gate_marks_degraded_advisory_cycles(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    saved = client.post(
+        "/inputs/bess_state/manual",
+        data={
+            "source_type": "manual_1h",
+            "csv_text": "timestamp,soc_mwh,soh_fraction\n2026-01-01 10:00,150,1\n",
+        },
+        follow_redirects=True,
+    )
+    assert saved.status_code == 200
+
+    live = client.get("/live?window_start=2026-01-01T10:00&live_at=2026-01-01T10:00&window_end=2026-01-01T11:00")
+
+    assert live.status_code == 200
+    assert b"Data Quality Gate" in live.data
+    assert b"Critical advisory status" in live.data
+    assert b"SOC outside physical capacity" in live.data
+
+
+def test_feed_catalog_page_is_viewable_and_admin_editable(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
+    operator_view = client.get("/feeds")
+    assert operator_view.status_code == 200
+    assert b"Feed Catalog" in operator_view.data
+    assert b"Solar Yield Forecast" in operator_view.data
+    assert b"Save Feed Catalog" not in operator_view.data
+
+    saved = client.post(
+        "/feeds/save",
+        headers=admin_headers,
+        data={
+            "feed_key": ["solar_forecast"],
+            "name": ["Solar API"],
+            "protocol": ["REST later"],
+            "update_frequency": ["Every 6 hours"],
+            "fallback_method": ["Manual CSV"],
+            "owner": ["Ops"],
+            "enabled": ["0"],
+        },
+        follow_redirects=True,
+    )
+
+    assert saved.status_code == 200
+    assert b"Feed catalog saved" in saved.data
+    assert b"REST later" in saved.data
+    assert b"disabled" in saved.data
 
 
 def test_auth0_mode_requires_session_but_keeps_health_public(tmp_path: Path, monkeypatch) -> None:

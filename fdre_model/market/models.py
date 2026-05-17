@@ -136,6 +136,96 @@ class AppUser:
 
 
 @dataclass(frozen=True)
+class ProjectRecord:
+    project_id: str
+    name: str
+    status: str
+    offtaker: str = ""
+    location: str = ""
+    contract_label: str = ""
+    capacity_summary: str = ""
+    created_at: str = ""
+    created_by: str = ""
+    updated_at: str = ""
+    updated_by: str = ""
+
+    def to_json(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> "ProjectRecord":
+        return cls(
+            project_id=str(payload["project_id"]).strip().lower(),
+            name=str(payload.get("name") or payload.get("project_id") or "").strip(),
+            status=str(payload.get("status") or "active").strip().lower(),
+            offtaker=str(payload.get("offtaker") or ""),
+            location=str(payload.get("location") or ""),
+            contract_label=str(payload.get("contract_label") or ""),
+            capacity_summary=str(payload.get("capacity_summary") or ""),
+            created_at=str(payload.get("created_at") or ""),
+            created_by=str(payload.get("created_by") or ""),
+            updated_at=str(payload.get("updated_at") or ""),
+            updated_by=str(payload.get("updated_by") or ""),
+        )
+
+
+@dataclass(frozen=True)
+class CustomerPortfolio:
+    customer_id: str
+    projects: list[ProjectRecord] = field(default_factory=list)
+    updated_at: str = ""
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "customer_id": self.customer_id,
+            "updated_at": self.updated_at,
+            "projects": [project.to_json() for project in self.projects],
+        }
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> "CustomerPortfolio":
+        projects = []
+        for item in payload.get("projects") or []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                projects.append(ProjectRecord.from_json(item))
+            except Exception:
+                continue
+        return cls(
+            customer_id=str(payload.get("customer_id") or ""),
+            updated_at=str(payload.get("updated_at") or ""),
+            projects=projects,
+        )
+
+
+@dataclass(frozen=True)
+class FeedDefinition:
+    feed_key: str
+    name: str
+    protocol: str
+    update_frequency: str
+    fallback_method: str
+    owner: str
+    enabled: bool = True
+
+    def to_json(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_json(cls, payload: dict[str, Any]) -> "FeedDefinition":
+        return cls(
+            feed_key=str(payload["feed_key"]).strip().lower(),
+            name=str(payload.get("name") or payload.get("feed_key") or "").strip(),
+            protocol=str(payload.get("protocol") or ""),
+            update_frequency=str(payload.get("update_frequency") or ""),
+            fallback_method=str(payload.get("fallback_method") or ""),
+            owner=str(payload.get("owner") or ""),
+            enabled=bool(payload.get("enabled", True)),
+        )
+
+
+@dataclass(frozen=True)
 class ModelVersion:
     version_type: str
     version_id: str

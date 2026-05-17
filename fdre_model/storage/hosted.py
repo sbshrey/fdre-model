@@ -115,7 +115,7 @@ class HostedPersistence:
         )
 
     def load_user_access(self, scope: WorkspaceScope) -> dict[str, Any] | None:
-        key = f"{scope.object_prefix(self.config.prefix)}/config/users.json"
+        key = f"{self.config.prefix.strip('/')}/customers/{scope.customer_id}/portfolio/users.json"
         try:
             response = self.s3.get_object(Bucket=self.config.bucket, Key=key)
         except Exception as exc:
@@ -126,15 +126,61 @@ class HostedPersistence:
         return json.loads(response["Body"].read().decode("utf-8"))
 
     def persist_user_access(self, scope: WorkspaceScope, payload: dict[str, Any]) -> None:
-        key = f"{scope.object_prefix(self.config.prefix)}/config/users.json"
+        key = f"{self.config.prefix.strip('/')}/customers/{scope.customer_id}/portfolio/users.json"
         self._put_json(key, payload)
-        self._put_index(
-            scope,
+        self._put_customer_index(
+            scope.customer_id,
             item_type="USER_ACCESS",
             item_id="users",
             created_at=str(payload.get("updated_at") or ""),
             s3_prefix=key.rsplit("/", 1)[0],
             extra={"user_count": len(payload.get("users") or [])},
+        )
+
+    def load_customer_portfolio(self, customer_id: str) -> dict[str, Any] | None:
+        customer = WorkspaceScope.from_values(customer_id, "default").customer_id
+        key = f"{self.config.prefix.strip('/')}/customers/{customer}/portfolio/projects.json"
+        try:
+            response = self.s3.get_object(Bucket=self.config.bucket, Key=key)
+        except Exception as exc:
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if error_code in {"NoSuchKey", "404", "NotFound"}:
+                return None
+            raise
+        return json.loads(response["Body"].read().decode("utf-8"))
+
+    def persist_customer_portfolio(self, customer_id: str, payload: dict[str, Any]) -> None:
+        customer = WorkspaceScope.from_values(customer_id, "default").customer_id
+        key = f"{self.config.prefix.strip('/')}/customers/{customer}/portfolio/projects.json"
+        self._put_json(key, payload)
+        for project in payload.get("projects") or []:
+            project_id = str(project.get("project_id") or "").strip().lower()
+            if not project_id:
+                continue
+            self._put_customer_index(
+                customer,
+                item_type="PROJECT",
+                item_id=project_id,
+                created_at=str(project.get("created_at") or payload.get("updated_at") or ""),
+                s3_prefix=key.rsplit("/", 1)[0],
+                extra={
+                    "workspace_key": project_id,
+                    "project_name": str(project.get("name") or ""),
+                    "status": str(project.get("status") or ""),
+                },
+            )
+
+    def persist_feed_catalog(self, scope: WorkspaceScope, payload: dict[str, Any]) -> None:
+        prefix = f"{scope.object_prefix(self.config.prefix)}/config"
+        key = f"{prefix}/feed_catalog.json"
+        self._put_json(key, payload)
+        self._put_index(
+            scope,
+            item_type="FEED_CATALOG",
+            item_id="feeds",
+            created_at=str(payload.get("updated_at") or ""),
+            s3_prefix=prefix,
+            extra={"feed_count": len(payload.get("feeds") or [])},
         )
 
     def _put_json(self, key: str, payload: dict[str, Any] | list[Any]) -> None:
@@ -181,6 +227,38 @@ class HostedPersistence:
         }
         if self.config.dynamodb_key_mode == "customer_workspace":
             item["workspace_id"] = f"{scope.workspace_id}#{sk}"
+        elif self.config.dynamodb_key_mode != "pk_sk":
+            raise HostedStorageNotConfigured("FDRE_HOSTED_DYNAMODB_KEY_MODE must be pk_sk or customer_workspace.")
+        item.update(extra)
+        self.table.put_item(Item=item)
+
+    def _put_customer_index(
+        self,
+        customer_id: str,
+        *,
+        item_type: str,
+        item_id: str,
+        created_at: str,
+        s3_prefix: str,
+        extra: dict[str, Any],
+    ) -> None:
+        if self.table is None:
+            return
+        customer = WorkspaceScope.from_values(customer_id, "default").customer_id
+        item = {
+            "pk": f"CUSTOMER#{customer}",
+            "sk": f"{item_type}#{item_id}",
+            "customer_id": customer,
+            "workspace_id": "",
+            "workspace_key": "",
+            "item_type": item_type,
+            "item_id": item_id,
+            "created_at": created_at,
+            "s3_bucket": self.config.bucket,
+            "s3_prefix": s3_prefix,
+        }
+        if self.config.dynamodb_key_mode == "customer_workspace":
+            item["workspace_id"] = f"portfolio#{item_type}#{item_id}"
         elif self.config.dynamodb_key_mode != "pk_sk":
             raise HostedStorageNotConfigured("FDRE_HOSTED_DYNAMODB_KEY_MODE must be pk_sk or customer_workspace.")
         item.update(extra)

@@ -17,6 +17,7 @@
   </div>
   <div class="actions">
     <form method="post" action="{{ url_for('recalculate_cycle') }}">
+      <input type="hidden" name="preset" value="{{ window.mode }}">
       {% if window.mode == "custom" %}
         <input type="hidden" name="window_start" value="{{ window.start }}">
         <input type="hidden" name="window_end" value="{{ window.end }}">
@@ -42,12 +43,21 @@
       <span class="pill">{{ window.formula }}</span>
       {% if window.mode == "custom" %}
         <span class="pill warning">custom</span>
+      {% elif window.mode == "intraday" %}
+        <span class="pill warning">intraday</span>
+      {% elif window.mode == "day_ahead" %}
+        <span class="pill warning">day-ahead</span>
       {% else %}
         <span class="pill ok">default {{ window.default_formula }}</span>
       {% endif %}
     </div>
   </div>
   <form method="get" action="{{ url_for('live_board') }}" class="window-form">
+    <label><span>Run Preset</span><select name="preset">
+      {% for preset in run_presets %}
+        <option value="{{ preset.value }}" {% if window.mode == preset.value %}selected{% endif %}>{{ preset.label }}</option>
+      {% endfor %}
+    </select></label>
     <label><span>Start</span><input type="datetime-local" name="window_start" value="{{ window.start }}"></label>
     <label><span>Live Interval</span><input type="datetime-local" name="live_at" value="{{ window.live_at }}"></label>
     <label><span>End</span><input type="datetime-local" name="window_end" value="{{ window.end }}"></label>
@@ -56,6 +66,20 @@
       <a class="button ghost" href="{{ url_for('live_board') }}">Default 31 Rows</a>
     </div>
   </form>
+</section>
+
+<section class="panel compact data-quality-panel data-quality-{{ summary.data_quality_status or 'ok' }}">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">Data Quality Gate</p>
+      <h2>{{ (summary.data_quality_status or "ok")|title }} advisory status</h2>
+      <p class="muted">{{ summary.data_quality_messages or "All active inputs passed the V2 quality gate." }}</p>
+    </div>
+    <div class="health-counts">
+      <span class="pill critical">{{ summary.data_quality_critical_count or 0 }} critical</span>
+      <span class="pill warning">{{ summary.data_quality_warning_count or 0 }} warning</span>
+    </div>
+  </div>
 </section>
 
 <section class="ops-grid">
@@ -125,8 +149,8 @@
   </div>
 </section>
 
-<section class="source-health">
-  <div class="section-head">
+<section class="panel compact source-health">
+  <div class="panel-head">
     <div>
       <p class="eyebrow">Input Freshness</p>
       <h2>Source Health</h2>
@@ -163,6 +187,9 @@
       <input type="hidden" name="window_end" value="{{ window.end }}">
       <input type="hidden" name="live_at" value="{{ window.live_at }}">
     {% endif %}
+    {% if window.mode in ["intraday", "day_ahead"] %}
+      <input type="hidden" name="preset" value="{{ window.mode }}">
+    {% endif %}
     <label><span>Status</span><select name="status">
       {% for value in ["all", "actual", "live", "forecast"] %}
         <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ value }}</option>
@@ -194,21 +221,21 @@
   <table data-syncfusion-grid="live-board" data-grid-height="620" data-grid-page-size="25">
     <thead>
       <tr>
-        <th>Interval</th>
+        <th data-grid-width="190">Interval</th>
         <th>Status</th>
         <th>Peak</th>
-        <th>Wind</th>
-        <th>Solar</th>
+        <th class="allocation-detail-column" data-grid-hidden="true">Wind</th>
+        <th class="allocation-detail-column" data-grid-hidden="true">Solar</th>
         <th>Available</th>
         <th>SOC Open</th>
-        <th>Peak Sale</th>
-        <th>PPA</th>
-        <th>Merchant</th>
-        <th>BESS +/-</th>
+        <th class="allocation-detail-column" data-grid-hidden="true">Peak Sale</th>
+        <th class="allocation-detail-column" data-grid-hidden="true">PPA</th>
+        <th class="allocation-detail-column" data-grid-hidden="true">Merchant</th>
+        <th class="allocation-detail-column" data-grid-hidden="true">BESS +/-</th>
         <th>Shortfall</th>
         <th>Market</th>
         <th>Rule</th>
-        <th class="why-column" data-grid-width="360">Why</th>
+        <th class="why-column" data-grid-width="320">Why</th>
       </tr>
     </thead>
     <tbody>
@@ -217,14 +244,14 @@
           <td>{{ row.interval_start }}</td>
           <td><span class="pill">{{ row.status }}</span></td>
           <td>{{ "Peak" if row.is_peak == "1" else "Non-peak" }}</td>
-          <td>{{ "%.1f"|format(row.wind_mwh|float) }}</td>
-          <td>{{ "%.1f"|format(row.solar_mwh|float) }}</td>
+          <td class="allocation-detail-column">{{ "%.1f"|format(row.wind_mwh|float) }}</td>
+          <td class="allocation-detail-column">{{ "%.1f"|format(row.solar_mwh|float) }}</td>
           <td>{{ "%.1f"|format(row.available_mwh|float) }}</td>
           <td>{{ "%.1f"|format(row.bess_open_mwh|float) }}</td>
-          <td>{{ "%.1f"|format(row.peak_power_sale_mwh|float) }}</td>
-          <td>{{ "%.1f"|format(row.ppa_sale_mwh|float) }}</td>
-          <td>{{ "%.1f"|format(row.merchant_sale_mwh|float) }}</td>
-          <td>{{ "%.1f"|format(row.bess_charge_mwh|float - row.bess_discharge_mwh|float) }}</td>
+          <td class="allocation-detail-column">{{ "%.1f"|format(row.peak_power_sale_mwh|float) }}</td>
+          <td class="allocation-detail-column">{{ "%.1f"|format(row.ppa_sale_mwh|float) }}</td>
+          <td class="allocation-detail-column">{{ "%.1f"|format(row.merchant_sale_mwh|float) }}</td>
+          <td class="allocation-detail-column">{{ "%.1f"|format(row.bess_charge_mwh|float - row.bess_discharge_mwh|float) }}</td>
           <td>{{ "%.1f"|format(row.shortfall_mwh|float) }}</td>
           <td>{{ row.recommended_market }}</td>
           {% if is_admin %}

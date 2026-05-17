@@ -20,10 +20,11 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from fdre_model.config import AppConfig
 from fdre_model.market.aggregation import ceil_datetime, floor_datetime, parse_csv_text, parse_interval
-from fdre_model.market.models import InputSpec, RuleDefinition
+from fdre_model.market.models import FeedDefinition, InputSpec, RuleDefinition
 from fdre_model.market.registry import workbook_case_rows, workbook_variable_rows
 from fdre_model.storage.hosted import HostedPersistence
 from fdre_model.storage.local import INPUT_SPECS, LocalWorkspaceStore
+from fdre_model.storage.scope import WorkspaceScope
 from fdre_model.web.auth import (
     AUTH_SESSION_KEY,
     ADMIN_ROLE,
@@ -41,6 +42,7 @@ from fdre_model.web.auth0_management import Auth0ManagementClient, auth0_connect
 
 
 _logger = logging.getLogger(__name__)
+PROJECT_SESSION_KEY = "selected_workspace_id"
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,7 @@ class LiveWindowSelection:
     window_start: datetime | None
     window_end: datetime | None
     custom: bool
+    mode: str = "running"
 
 
 def create_app(
@@ -108,6 +111,7 @@ def create_app(
         user = authenticated_user()
         if user is None:
             return None
+        user = apply_selected_project(user)
         if auth0_enabled:
             return apply_app_access(user, enforce=True)
         return apply_app_access(user, enforce=False)
@@ -116,6 +120,19 @@ def create_app(
         if auth0_enabled:
             return CurrentUser.from_session(session.get(AUTH_SESSION_KEY))
         return user_from_headers(request.headers)
+
+    def apply_selected_project(user: CurrentUser) -> CurrentUser:
+        selected = str(session.get(PROJECT_SESSION_KEY) or "").strip()
+        workspace_id = selected or user.scope.workspace_id
+        if selected:
+            projects = store.list_projects(user.scope.customer_id)
+            if not any(project.project_id == selected for project in projects):
+                session.pop(PROJECT_SESSION_KEY, None)
+                workspace_id = user.scope.workspace_id
+        return _user_with_scope(
+            user,
+            WorkspaceScope.from_values(user.scope.customer_id, workspace_id),
+        )
 
     def apply_app_access(user: CurrentUser, *, enforce: bool) -> CurrentUser | None:
         env_admins = admin_emails()
@@ -186,6 +203,8 @@ def create_app(
                 "current_user": None,
                 "is_admin": False,
                 "workspace_scope": None,
+                "portfolio_projects": [],
+                "selected_project": None,
                 "storage_backend": _storage_backend_name(),
                 "auth0_enabled": auth0_enabled,
                 "auth0_management_enabled": auth0_management is not None,
@@ -193,12 +212,16 @@ def create_app(
                 "syncfusion_license_key": _env_first("FDRE_SYNCFUSION_LICENSE_KEY", "SYNCFUSION_LICENSE_KEY") or "",
             }
         state = store.for_scope(user.scope).ensure()
+        projects = store.list_projects(user.scope.customer_id)
+        selected_project = store.project_record(user.scope)
         return {
             "active_page": "",
             "project": store.load_config(state).project.name,
             "current_user": user,
             "is_admin": user.is_admin,
             "workspace_scope": state.scope,
+            "portfolio_projects": projects,
+            "selected_project": selected_project,
             "storage_backend": _storage_backend_name(),
             "auth0_enabled": auth0_enabled,
             "auth0_management_enabled": auth0_management is not None,
@@ -207,7 +230,16 @@ def create_app(
         }
 
     @app.get("/")
+    @app.get("/live")
     def live_board() -> str | Response:
+        user = current_user()
+        if (
+            request.path == "/"
+            and user is not None
+            and not request.headers.get("X-Workspace-Id")
+            and len(store.list_projects(user.scope.customer_id)) > 1
+        ):
+            return redirect(url_for("portfolio_page"))
         state = workspace()
         config = store.load_config(state)
         try:
@@ -220,6 +252,7 @@ def create_app(
             now=live_window.live_at,
             window_start=live_window.window_start,
             window_end=live_window.window_end,
+            window_mode=live_window.mode,
         )
         rows = store.read_allocation_rows(cycle)
         filters = _filters_from_request(request.args)
@@ -236,6 +269,7 @@ def create_app(
             market_options=market_options,
             summary=cycle.summary,
             window=_live_window_context(cycle, rows, config),
+            run_presets=_run_presets(),
             alerts=_live_alerts(cycle, rows),
             acknowledgement=acknowledgement,
         )
@@ -254,10 +288,63 @@ def create_app(
             now=live_window.live_at,
             window_start=live_window.window_start,
             window_end=live_window.window_end,
+            window_mode=live_window.mode,
             force=True,
         )
         flash(f"Decision cycle recalculated: {cycle.cycle_id}", "success")
         return redirect(url_for("live_board", **_live_window_query(live_window)))
+
+    @app.get("/portfolio")
+    def portfolio_page() -> str:
+        user = current_user()
+        if user is None:
+            abort(401)
+        projects = store.list_projects(user.scope.customer_id)
+        rows = [_portfolio_project_row(store, user.scope.customer_id, project) for project in projects]
+        return render_template(
+            "portfolio.html",
+            active_page="portfolio",
+            projects=rows,
+            project_count=len(projects),
+        )
+
+    @app.post("/portfolio/select")
+    def select_project() -> Response:
+        user = current_user()
+        if user is None:
+            abort(401)
+        project_id = str(request.form.get("project_id") or "").strip()
+        projects = store.list_projects(user.scope.customer_id)
+        if not any(project.project_id == project_id for project in projects):
+            flash("Project was not found for this client.", "error")
+            return redirect(url_for("portfolio_page"))
+        session[PROJECT_SESSION_KEY] = project_id
+        flash("Project selected.", "success")
+        return redirect(request.form.get("next") or url_for("live_board"))
+
+    @app.post("/portfolio/projects/create")
+    def create_project() -> Response:
+        require_admin()
+        user = current_user()
+        if user is None:
+            abort(401)
+        try:
+            record = store.create_project(
+                user.scope.customer_id,
+                project_id=str(request.form.get("project_id") or ""),
+                name=str(request.form.get("name") or ""),
+                status=str(request.form.get("status") or "active"),
+                offtaker=str(request.form.get("offtaker") or ""),
+                location=str(request.form.get("location") or ""),
+                contract_label=str(request.form.get("contract_label") or ""),
+                capacity_summary=str(request.form.get("capacity_summary") or ""),
+                user_email=current_user_email(),
+            )
+            session[PROJECT_SESSION_KEY] = record.project_id
+            flash(f"Project created: {record.name}.", "success")
+        except Exception as exc:
+            flash(f"Project creation failed: {exc}", "error")
+        return redirect(url_for("portfolio_page"))
 
     @app.get("/history")
     def history_page() -> str:
@@ -288,6 +375,7 @@ def create_app(
             market_options=_market_options(rows),
             summary=cycle.summary,
             window=_live_window_context(cycle, rows, config),
+            run_presets=_run_presets(),
             alerts=_live_alerts(cycle, rows),
             acknowledgement=store.get_acknowledgement(state, cycle.cycle_id),
         )
@@ -543,6 +631,40 @@ def create_app(
             flash(f"Failed to save assumptions: {exc}", "error")
         return redirect(url_for("assumptions_page"))
 
+    @app.get("/feeds")
+    def feeds_page() -> str:
+        state = workspace()
+        return render_template(
+            "feeds.html",
+            active_page="feeds",
+            feeds=store.list_feed_catalog(state),
+        )
+
+    @app.post("/feeds/save")
+    def save_feeds() -> Response:
+        require_admin()
+        state = workspace()
+        try:
+            keys = request.form.getlist("feed_key")
+            feeds: list[FeedDefinition] = []
+            for index, feed_key in enumerate(keys):
+                feeds.append(
+                    FeedDefinition(
+                        feed_key=feed_key,
+                        name=_form_list_value(request.form, "name", index),
+                        protocol=_form_list_value(request.form, "protocol", index),
+                        update_frequency=_form_list_value(request.form, "update_frequency", index),
+                        fallback_method=_form_list_value(request.form, "fallback_method", index),
+                        owner=_form_list_value(request.form, "owner", index),
+                        enabled=_form_list_value(request.form, "enabled", index) == "1",
+                    )
+                )
+            store.save_feed_catalog(state, feeds, user_email=current_user_email())
+            flash("Feed catalog saved.", "success")
+        except Exception as exc:
+            flash(f"Feed catalog save failed: {exc}", "error")
+        return redirect(url_for("feeds_page"))
+
     @app.get("/users")
     def users_page() -> str:
         require_admin()
@@ -575,7 +697,7 @@ def create_app(
         target_email = request.form.get("email", "")
         try:
             _activate_workspace_user(store, state, auth0_management, target_email, current_user_email())
-            flash("User activated for this FDRE workspace.", "success")
+            flash("User activated for this FDRE workspace/client.", "success")
         except Exception as exc:
             flash(f"User activation failed: {exc}", "error")
         return redirect(url_for("users_page"))
@@ -586,7 +708,7 @@ def create_app(
         state = workspace()
         try:
             _activate_workspace_user(store, state, auth0_management, email, current_user_email())
-            flash("User activated for this FDRE workspace.", "success")
+            flash("User activated for this FDRE workspace/client.", "success")
         except Exception as exc:
             flash(f"User activation failed: {exc}", "error")
         return redirect(url_for("users_page"))
@@ -705,6 +827,16 @@ def _user_with_role(user: CurrentUser, role: str) -> CurrentUser:
     )
 
 
+def _user_with_scope(user: CurrentUser, scope: WorkspaceScope) -> CurrentUser:
+    return CurrentUser(
+        email=user.email,
+        role=user.role,
+        subject=user.subject,
+        scope=scope,
+        name=user.name,
+    )
+
+
 def _persistence_from_env() -> HostedPersistence | None:
     backend = _storage_backend_name()
     if backend == "local":
@@ -712,6 +844,29 @@ def _persistence_from_env() -> HostedPersistence | None:
     if backend == "hosted":
         return HostedPersistence.from_env()
     raise ValueError("FDRE_STORAGE_BACKEND must be local or hosted.")
+
+
+def _portfolio_project_row(store: LocalWorkspaceStore, customer_id: str, project: Any) -> dict[str, Any]:
+    scope = WorkspaceScope.from_values(customer_id, project.project_id)
+    state = store.for_scope(scope).ensure()
+    cycle = store.latest_or_create_cycle(state)
+    acknowledgement = store.get_acknowledgement(state, cycle.cycle_id) if cycle else None
+    summary = cycle.summary if cycle else {}
+    critical = int(summary.get("source_health_critical") or 0)
+    warning = int(summary.get("source_health_warning") or 0)
+    source_status = "critical" if critical else "warning" if warning else "ok"
+    return {
+        "record": project,
+        "cycle_id": cycle.cycle_id if cycle else "",
+        "latest_cycle_at": cycle.created_at if cycle else "No cycle yet",
+        "source_status": source_status,
+        "data_quality_status": str(summary.get("data_quality_status") or source_status),
+        "shortfall_mwh": float(summary.get("shortfall_mwh") or 0.0),
+        "peak_compliance_pct": float(summary.get("monthly_peak_90_compliance_pct") or 0.0),
+        "annual_cuf_pct": float(summary.get("annual_cuf_pct") or 0.0),
+        "acknowledged_by": acknowledgement.user_email if acknowledgement else "",
+        "acknowledged_at": acknowledgement.acknowledged_at if acknowledgement else "",
+    }
 
 
 def _activate_workspace_user(
@@ -820,11 +975,43 @@ def _normalized_email(value: str) -> str:
     return value.strip().lower()
 
 
+def _run_presets() -> list[dict[str, str]]:
+    return [
+        {"value": "running", "label": "Running"},
+        {"value": "intraday", "label": "Intraday"},
+        {"value": "day_ahead", "label": "Day-ahead"},
+        {"value": "custom", "label": "Custom"},
+    ]
+
+
 def _live_window_selection(values: Any, config: AppConfig) -> LiveWindowSelection:
+    raw_preset = values.get("preset")
+    preset = str(raw_preset or "running").strip().lower()
+    interval = parse_interval(config.market_model.interval)
+    if preset == "running" and raw_preset is not None:
+        return LiveWindowSelection(live_at=None, window_start=None, window_end=None, custom=False, mode="running")
+    if preset == "intraday":
+        live_at = floor_datetime(_parse_optional_input_datetime(values.get("live_at")) or _local_now(config), interval)
+        return LiveWindowSelection(
+            live_at=live_at,
+            window_start=live_at,
+            window_end=live_at + timedelta(hours=8) + interval,
+            custom=True,
+            mode="intraday",
+        )
+    if preset == "day_ahead":
+        live_at = floor_datetime(_parse_optional_input_datetime(values.get("live_at")) or _local_now(config), interval)
+        start = (live_at + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return LiveWindowSelection(
+            live_at=live_at,
+            window_start=start,
+            window_end=start + timedelta(hours=24),
+            custom=True,
+            mode="day_ahead",
+        )
     has_window_values = any(str(values.get(key) or "").strip() for key in ("window_start", "window_end", "live_at"))
     if not has_window_values:
-        return LiveWindowSelection(live_at=None, window_start=None, window_end=None, custom=False)
-    interval = parse_interval(config.market_model.interval)
+        return LiveWindowSelection(live_at=None, window_start=None, window_end=None, custom=False, mode="running")
     live_at = floor_datetime(_parse_optional_input_datetime(values.get("live_at")) or _local_now(config), interval)
     start = floor_datetime(
         _parse_optional_input_datetime(values.get("window_start")) or (live_at - timedelta(hours=config.market_model.recent_hours)),
@@ -836,7 +1023,7 @@ def _live_window_selection(values: Any, config: AppConfig) -> LiveWindowSelectio
     )
     if end <= start:
         raise ValueError("End must be after start.")
-    return LiveWindowSelection(live_at=live_at, window_start=start, window_end=end, custom=True)
+    return LiveWindowSelection(live_at=live_at, window_start=start, window_end=end, custom=True, mode="custom")
 
 
 def _live_window_context(cycle: Any, rows: list[dict[str, str]], config: AppConfig) -> dict[str, Any]:
@@ -846,7 +1033,7 @@ def _live_window_context(cycle: Any, rows: list[dict[str, str]], config: AppConf
     total_rows = actual_rows + live_rows + forecast_rows
     live_interval = str(cycle.summary.get("live_interval") or _live_interval_from_rows(rows) or cycle.window_start)
     return {
-        "mode": str(cycle.summary.get("window_mode") or "default"),
+        "mode": str(cycle.summary.get("window_mode") or "running"),
         "start": _datetime_local(_parse_input_datetime(cycle.window_start)),
         "end": _datetime_local(_parse_input_datetime(cycle.window_end)),
         "live_at": _datetime_local(_parse_input_datetime(live_interval)),
@@ -863,6 +1050,8 @@ def _live_window_context(cycle: Any, rows: list[dict[str, str]], config: AppConf
 
 
 def _live_window_query(selection: LiveWindowSelection) -> dict[str, str]:
+    if selection.mode in {"intraday", "day_ahead"}:
+        return {"preset": selection.mode}
     if not selection.custom or selection.window_start is None or selection.window_end is None or selection.live_at is None:
         return {}
     return {
@@ -1445,6 +1634,15 @@ def _row_has_alert(row: dict[str, str]) -> bool:
 
 def _live_alerts(cycle: Any, rows: list[dict[str, str]]) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
+    data_quality_status = str(cycle.summary.get("data_quality_status") or "ok")
+    if data_quality_status != "ok":
+        alerts.append(
+            {
+                "level": "critical" if data_quality_status == "critical" else "warning",
+                "title": "Advisory quality degraded",
+                "message": str(cycle.summary.get("data_quality_messages") or "Review active input quality before using this recommendation."),
+            }
+        )
     critical_sources = [item.label for item in cycle.source_health if item.status == "critical"]
     warning_sources = [item.label for item in cycle.source_health if item.status == "warning"]
     if critical_sources:
@@ -1493,6 +1691,11 @@ def _json_form_mapping(raw: str | None, *, fallback: dict[str, Any]) -> dict[str
     if not isinstance(payload, dict):
         raise ValueError("Rule condition/action JSON must be an object.")
     return payload
+
+
+def _form_list_value(form: Any, key: str, index: int) -> str:
+    values = form.getlist(key)
+    return str(values[index] if index < len(values) else "").strip()
 
 
 def main() -> None:

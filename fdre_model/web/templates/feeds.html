@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Feeds | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Future Live Data</p>
+    <h1>Feed Catalog</h1>
+    <p class="muted">Project-level metadata for live integrations. V2 stores the catalog only; connector execution remains future scope.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <form method="post" action="{{ url_for('save_feeds') }}">
+    <div class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>Feed</th>
+            <th>Protocol</th>
+            <th>Frequency</th>
+            <th>Fallback</th>
+            <th>Owner</th>
+            <th>Enabled</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for feed in feeds %}
+            <tr>
+              <td>
+                <input type="hidden" name="feed_key" value="{{ feed.feed_key }}">
+                {% if is_admin %}
+                  <input name="name" value="{{ feed.name }}">
+                {% else %}
+                  {{ feed.name }}
+                {% endif %}
+              </td>
+              <td>{% if is_admin %}<input name="protocol" value="{{ feed.protocol }}">{% else %}{{ feed.protocol }}{% endif %}</td>
+              <td>{% if is_admin %}<input name="update_frequency" value="{{ feed.update_frequency }}">{% else %}{{ feed.update_frequency }}{% endif %}</td>
+              <td>{% if is_admin %}<input name="fallback_method" value="{{ feed.fallback_method }}">{% else %}{{ feed.fallback_method }}{% endif %}</td>
+              <td>{% if is_admin %}<input name="owner" value="{{ feed.owner }}">{% else %}{{ feed.owner }}{% endif %}</td>
+              <td>
+                {% if is_admin %}
+                  <select name="enabled">
+                    <option value="1" {% if feed.enabled %}selected{% endif %}>enabled</option>
+                    <option value="0" {% if not feed.enabled %}selected{% endif %}>disabled</option>
+                  </select>
+                {% else %}
+                  <span class="pill {{ 'ok' if feed.enabled else 'warning' }}">{{ "enabled" if feed.enabled else "disabled" }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if is_admin %}
+      <div class="actions end">
+        <button type="submit">Save Feed Catalog</button>
+      </div>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

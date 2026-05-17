@@ -4,6 +4,9 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
+from fdre_model.market.models import FeedDefinition
 from fdre_model.market.models import RuleDefinition
 from fdre_model.market.rules import DEFAULT_RULES
 from fdre_model.storage.local import LocalWorkspaceStore
@@ -45,6 +48,72 @@ def test_seed_inputs_use_packaged_seci_reference_year(tmp_path: Path) -> None:
     assert solar.coverage_end == "2026-12-31 23:00:00"
     assert peak is not None
     assert peak.row_count == 8760
+
+
+def test_customer_portfolio_registry_bootstraps_projects_and_rejects_duplicates(tmp_path: Path) -> None:
+    store = LocalWorkspaceStore(tmp_path / ".workspace")
+    plant_a_scope = WorkspaceScope.from_values("Acme Energy", "Plant A")
+    state = store.for_scope(plant_a_scope).ensure()
+
+    projects = store.list_projects("Acme Energy")
+    assert [project.project_id for project in projects] == ["plant-a"]
+    assert projects[0].name == store.load_config(state).project.name
+
+    created = store.create_project(
+        "Acme Energy",
+        project_id="Plant B",
+        name="Plant B FDRE",
+        offtaker="SJVN",
+        location="North",
+        contract_label="FDRE PPA",
+        capacity_summary="Wind 100 MW | Solar 50 MW",
+        user_email="admin@example.com",
+    )
+
+    assert created.project_id == "plant-b"
+    assert [project.project_id for project in store.list_projects("Acme Energy")] == ["plant-a", "plant-b"]
+    assert (tmp_path / ".workspace" / "customers" / "acme-energy" / "portfolio" / "projects.json").exists()
+    assert (tmp_path / ".workspace" / "customers" / "acme-energy" / "workspaces" / "plant-b").exists()
+    with pytest.raises(ValueError, match="Project already exists"):
+        store.create_project("Acme Energy", project_id="Plant B", name="Duplicate", user_email="admin@example.com")
+
+
+def test_client_users_are_shared_across_project_workspaces(tmp_path: Path) -> None:
+    store = LocalWorkspaceStore(tmp_path / ".workspace")
+    plant_a = store.for_scope(WorkspaceScope.from_values("Acme", "Plant A")).ensure()
+    plant_b = store.for_scope(WorkspaceScope.from_values("Acme", "Plant B")).ensure()
+
+    store.activate_app_user(plant_a, "operator@example.com", user_email="admin@example.com")
+
+    assert store.app_user(plant_b, "operator@example.com") is not None
+    assert plant_a.users_path == plant_b.users_path
+
+
+def test_feed_catalog_defaults_and_saves_per_project(tmp_path: Path) -> None:
+    store = LocalWorkspaceStore(tmp_path / ".workspace")
+    state = store.for_scope(WorkspaceScope.from_values("Acme", "Plant A")).ensure()
+
+    feeds = store.list_feed_catalog(state)
+    assert any(feed.feed_key == "solar_forecast" for feed in feeds)
+
+    saved = store.save_feed_catalog(
+        state,
+        [
+            FeedDefinition(
+                feed_key="solar_forecast",
+                name="Solar Forecast",
+                protocol="REST later",
+                update_frequency="Every 6 hours",
+                fallback_method="Manual CSV",
+                owner="Ops",
+                enabled=False,
+            )
+        ],
+        user_email="admin@example.com",
+    )
+
+    assert saved[0].protocol == "REST later"
+    assert not saved[0].enabled
 
 
 def test_legacy_seed_inputs_are_refreshed_but_manual_inputs_are_kept(tmp_path: Path) -> None:

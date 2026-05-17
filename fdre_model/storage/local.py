@@ -20,16 +20,19 @@ from fdre_model.market.engine import build_decisions, parse_active_input_texts, 
 from fdre_model.market.metrics import workbook_metric_summary
 from fdre_model.market.models import (
     AppUser,
+    CustomerPortfolio,
     DecisionCycle,
+    FeedDefinition,
     InputSpec,
     InputVersion,
     ModelVersion,
     OperatorAcknowledgement,
+    ProjectRecord,
     RuleDefinition,
     SourceHealth,
 )
 from fdre_model.market.rules import DEFAULT_RULES
-from fdre_model.storage.scope import WorkspaceScope
+from fdre_model.storage.scope import DEFAULT_WORKSPACE_ID, WorkspaceScope
 
 
 INPUT_SPECS: tuple[InputSpec, ...] = (
@@ -79,6 +82,48 @@ SAMPLE_SEED_FILES = {
     "t2_pricing": "t2_pricing_2026_hourly.csv",
     "peak_schedule": "peak_schedule_2026_hourly.csv",
 }
+DEFAULT_FEEDS: tuple[FeedDefinition, ...] = (
+    FeedDefinition(
+        feed_key="solar_forecast",
+        name="Solar Yield Forecast",
+        protocol="Manual CSV",
+        update_frequency="Daily / intraday override",
+        fallback_method="Manual template uploader",
+        owner="Operations",
+    ),
+    FeedDefinition(
+        feed_key="wind_forecast",
+        name="Wind Yield Forecast",
+        protocol="Manual CSV",
+        update_frequency="Daily / intraday override",
+        fallback_method="Manual template uploader",
+        owner="Operations",
+    ),
+    FeedDefinition(
+        feed_key="bess_state",
+        name="BESS SOC / SOH",
+        protocol="Manual CSV",
+        update_frequency="Hourly in V2 foundation",
+        fallback_method="Operator table edit",
+        owner="Site / EMS",
+    ),
+    FeedDefinition(
+        feed_key="market_price",
+        name="T2 / Merchant Pricing",
+        protocol="Manual CSV",
+        update_frequency="Hourly in V2 foundation",
+        fallback_method="Last active version",
+        owner="Commercial",
+    ),
+    FeedDefinition(
+        feed_key="peak_schedule",
+        name="Peak Schedule",
+        protocol="Manual CSV",
+        update_frequency="Contract update / override",
+        fallback_method="Default peak hours",
+        owner="Business Admin",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -94,6 +139,7 @@ class Workspace:
     active_model_versions_path: Path
     source_config_path: Path
     users_path: Path
+    feed_catalog_path: Path
     scope: WorkspaceScope | None = None
 
 
@@ -133,10 +179,12 @@ class LocalWorkspaceStore:
             model_versions_dir=self.root / "model_versions",
             active_model_versions_path=self.root / "model_versions" / "active.json",
             source_config_path=self.source_config_path,
-            users_path=self.root / "config" / "users.json",
+            users_path=self._users_path_for_scope(self.scope),
+            feed_catalog_path=self.root / "config" / "feed_catalog.json",
             scope=self.scope,
         )
         state.config_dir.mkdir(parents=True, exist_ok=True)
+        state.users_path.parent.mkdir(parents=True, exist_ok=True)
         state.inputs_dir.mkdir(parents=True, exist_ok=True)
         state.rules_dir.mkdir(parents=True, exist_ok=True)
         state.cycles_dir.mkdir(parents=True, exist_ok=True)
@@ -149,6 +197,9 @@ class LocalWorkspaceStore:
             state.active_model_versions_path.write_text("{}", encoding="utf-8")
         if not self.rules_path(state).exists():
             self._write_rules_file(state, list(DEFAULT_RULES))
+        if not state.feed_catalog_path.exists():
+            self._write_feed_catalog(state, list(DEFAULT_FEEDS))
+        self._ensure_project_record(state)
         self._bootstrap_model_versions(state)
         self._sync_default_rules(state)
         if not state.users_path.exists():
@@ -156,6 +207,94 @@ class LocalWorkspaceStore:
         self._sync_env_admin_users(state)
         self._bootstrap_seed_inputs(state)
         return state
+
+    def list_projects(self, customer_id: str) -> list[ProjectRecord]:
+        portfolio = self.customer_portfolio(customer_id)
+        return sorted(portfolio.projects, key=lambda item: (item.status != "active", item.name.lower(), item.project_id))
+
+    def customer_portfolio(self, customer_id: str) -> CustomerPortfolio:
+        customer = WorkspaceScope.from_values(customer_id, DEFAULT_WORKSPACE_ID).customer_id
+        portfolio = self._load_portfolio(customer)
+        return CustomerPortfolio(
+            customer_id=customer,
+            updated_at=portfolio.updated_at,
+            projects=sorted(portfolio.projects, key=lambda item: item.project_id),
+        )
+
+    def project_record(self, scope: WorkspaceScope) -> ProjectRecord | None:
+        project_id = WorkspaceScope.from_values(scope.customer_id, scope.workspace_id).workspace_id
+        return next((project for project in self.list_projects(scope.customer_id) if project.project_id == project_id), None)
+
+    def create_project(
+        self,
+        customer_id: str,
+        *,
+        project_id: str,
+        name: str,
+        status: str = "active",
+        offtaker: str = "",
+        location: str = "",
+        contract_label: str = "",
+        capacity_summary: str = "",
+        user_email: str = "system",
+    ) -> ProjectRecord:
+        scope = WorkspaceScope.from_values(customer_id, project_id)
+        portfolio = self._load_portfolio(scope.customer_id)
+        if any(project.project_id == scope.workspace_id for project in portfolio.projects):
+            raise ValueError(f"Project already exists: {scope.workspace_id}")
+        now = _iso_now()
+        record = ProjectRecord(
+            project_id=scope.workspace_id,
+            name=name.strip() or scope.workspace_id,
+            status=status.strip().lower() or "active",
+            offtaker=offtaker.strip(),
+            location=location.strip(),
+            contract_label=contract_label.strip(),
+            capacity_summary=capacity_summary.strip(),
+            created_at=now,
+            created_by=user_email,
+            updated_at=now,
+            updated_by=user_email,
+        )
+        self._write_portfolio(
+            CustomerPortfolio(
+                customer_id=scope.customer_id,
+                projects=[*portfolio.projects, record],
+                updated_at=now,
+            )
+        )
+        self.for_scope(scope).ensure()
+        return record
+
+    def list_feed_catalog(self, state: Workspace) -> list[FeedDefinition]:
+        if not state.feed_catalog_path.exists():
+            self._write_feed_catalog(state, list(DEFAULT_FEEDS))
+        try:
+            payload = json.loads(state.feed_catalog_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return list(DEFAULT_FEEDS)
+        rows = payload.get("feeds") if isinstance(payload, dict) else payload
+        feeds: list[FeedDefinition] = []
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                try:
+                    feeds.append(FeedDefinition.from_json(row))
+                except Exception:
+                    continue
+        return feeds or list(DEFAULT_FEEDS)
+
+    def save_feed_catalog(
+        self,
+        state: Workspace,
+        feeds: list[FeedDefinition],
+        *,
+        user_email: str = "system",
+    ) -> list[FeedDefinition]:
+        del user_email
+        self._write_feed_catalog(state, feeds)
+        return self.list_feed_catalog(state)
 
     def load_config(self, state: Workspace) -> AppConfig:
         return AppConfig.from_yaml(state.config_path)
@@ -424,6 +563,7 @@ class LocalWorkspaceStore:
         now: datetime | None = None,
         window_start: datetime | None = None,
         window_end: datetime | None = None,
+        window_mode: str | None = None,
     ) -> DecisionCycle:
         config = self.load_config(state)
         rules = self.load_rules(state)
@@ -454,8 +594,16 @@ class LocalWorkspaceStore:
         source_health = self.source_health(state, now=effective_now, buckets=buckets)
         summary = summary_for_decisions(decisions)
         summary.update(workbook_metric_summary(config, inputs, decisions, buckets, now=effective_now))
-        summary.update(_window_summary_values(buckets, effective_now, custom=window_start is not None or window_end is not None))
+        summary.update(
+            _window_summary_values(
+                buckets,
+                effective_now,
+                custom=window_start is not None or window_end is not None,
+                mode=window_mode,
+            )
+        )
         summary.update(_source_health_summary(source_health))
+        summary.update(_data_quality_gate(config, inputs, source_health, buckets))
         summary.update(_model_version_summary_values(model_versions))
         summary.update(_scope_json(state))
         cycle_id = f"cycle-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
@@ -491,11 +639,25 @@ class LocalWorkspaceStore:
         now: datetime | None = None,
         window_start: datetime | None = None,
         window_end: datetime | None = None,
+        window_mode: str | None = None,
         force: bool = False,
     ) -> DecisionCycle:
         cycle = None if force else self.latest_cycle(state)
-        if cycle is None or self.cycle_is_stale(state, cycle, now=now, window_start=window_start, window_end=window_end):
-            return self.create_decision_cycle(state, now=now, window_start=window_start, window_end=window_end)
+        if cycle is None or self.cycle_is_stale(
+            state,
+            cycle,
+            now=now,
+            window_start=window_start,
+            window_end=window_end,
+            window_mode=window_mode,
+        ):
+            return self.create_decision_cycle(
+                state,
+                now=now,
+                window_start=window_start,
+                window_end=window_end,
+                window_mode=window_mode,
+            )
         return cycle
 
     def cycle_is_stale(
@@ -506,6 +668,7 @@ class LocalWorkspaceStore:
         now: datetime | None = None,
         window_start: datetime | None = None,
         window_end: datetime | None = None,
+        window_mode: str | None = None,
     ) -> bool:
         if not cycle.source_health:
             return True
@@ -515,6 +678,9 @@ class LocalWorkspaceStore:
         expected_window_start = buckets[0].start.isoformat(sep=" ") if buckets else ""
         expected_window_end = buckets[-1].end.isoformat(sep=" ") if buckets else ""
         if cycle.window_start != expected_window_start or cycle.window_end != expected_window_end:
+            return True
+        expected_mode = window_mode or ("custom" if window_start is not None or window_end is not None else "running")
+        if str(cycle.summary.get("window_mode") or "running") != expected_mode:
             return True
 
         if cycle.input_versions != self._active_input_version_ids(state):
@@ -691,6 +857,93 @@ class LocalWorkspaceStore:
 
     def rules_path(self, state: Workspace) -> Path:
         return state.rules_dir / "rules.json"
+
+    def _users_path_for_scope(self, scope: WorkspaceScope | None) -> Path:
+        if scope is None:
+            return self.root / "config" / "users.json"
+        return self.base_root / "customers" / scope.customer_id / "portfolio" / "users.json"
+
+    def _portfolio_path(self, customer_id: str) -> Path:
+        customer = WorkspaceScope.from_values(customer_id, DEFAULT_WORKSPACE_ID).customer_id
+        return self.base_root / "customers" / customer / "portfolio" / "projects.json"
+
+    def _load_portfolio(self, customer_id: str) -> CustomerPortfolio:
+        customer = WorkspaceScope.from_values(customer_id, DEFAULT_WORKSPACE_ID).customer_id
+        path = self._portfolio_path(customer)
+        if not path.exists():
+            self._restore_customer_portfolio(customer)
+        if not path.exists():
+            return CustomerPortfolio(customer_id=customer, projects=[], updated_at="")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return CustomerPortfolio(customer_id=customer, projects=[], updated_at="")
+        portfolio = CustomerPortfolio.from_json(payload)
+        return CustomerPortfolio(customer_id=customer, projects=portfolio.projects, updated_at=portfolio.updated_at)
+
+    def _write_portfolio(self, portfolio: CustomerPortfolio) -> None:
+        unique = {project.project_id: project for project in portfolio.projects if project.project_id}
+        normalized = CustomerPortfolio(
+            customer_id=portfolio.customer_id,
+            updated_at=portfolio.updated_at or _iso_now(),
+            projects=sorted(unique.values(), key=lambda item: item.project_id),
+        )
+        path = self._portfolio_path(normalized.customer_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = normalized.to_json()
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        if self.persistence is not None and hasattr(self.persistence, "persist_customer_portfolio"):
+            self.persistence.persist_customer_portfolio(normalized.customer_id, payload)
+
+    def _ensure_project_record(self, state: Workspace) -> None:
+        if state.scope is None:
+            return
+        portfolio = self._load_portfolio(state.scope.customer_id)
+        if any(project.project_id == state.scope.workspace_id for project in portfolio.projects):
+            return
+        config = self.load_config(state)
+        now = _iso_now()
+        record = ProjectRecord(
+            project_id=state.scope.workspace_id,
+            name=config.project.name or state.scope.workspace_id,
+            status="active",
+            capacity_summary=_capacity_summary(config),
+            created_at=now,
+            created_by="migration",
+            updated_at=now,
+            updated_by="migration",
+        )
+        self._write_portfolio(
+            CustomerPortfolio(
+                customer_id=state.scope.customer_id,
+                updated_at=now,
+                projects=[*portfolio.projects, record],
+            )
+        )
+
+    def _restore_customer_portfolio(self, customer_id: str) -> None:
+        if self.persistence is None or not hasattr(self.persistence, "load_customer_portfolio"):
+            return
+        customer = WorkspaceScope.from_values(customer_id, DEFAULT_WORKSPACE_ID).customer_id
+        try:
+            payload = self.persistence.load_customer_portfolio(customer)
+        except Exception:
+            return
+        if isinstance(payload, dict) and isinstance(payload.get("projects"), list):
+            path = self._portfolio_path(customer)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _write_feed_catalog(self, state: Workspace, feeds: list[FeedDefinition]) -> None:
+        unique = {feed.feed_key: feed for feed in feeds if feed.feed_key}
+        payload = {
+            "updated_at": _iso_now(),
+            "feeds": [feed.to_json() for feed in sorted(unique.values(), key=lambda item: item.feed_key)],
+        }
+        state.feed_catalog_path.parent.mkdir(parents=True, exist_ok=True)
+        state.feed_catalog_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        if self.persistence is not None and state.scope is not None and hasattr(self.persistence, "persist_feed_catalog"):
+            self.persistence.persist_feed_catalog(state.scope, payload)
 
     def _load_app_users(self, state: Workspace) -> list[AppUser]:
         if not state.users_path.exists():
@@ -1155,10 +1408,16 @@ def _model_version_summary_values(model_versions: dict[str, str]) -> dict[str, s
     }
 
 
-def _window_summary_values(buckets: list[Any], effective_now: datetime, *, custom: bool) -> dict[str, str | int]:
+def _window_summary_values(
+    buckets: list[Any],
+    effective_now: datetime,
+    *,
+    custom: bool,
+    mode: str | None,
+) -> dict[str, str | int]:
     live_bucket = next((bucket for bucket in buckets if getattr(bucket, "status", "") == "live"), None)
     return {
-        "window_mode": "custom" if custom else "default",
+        "window_mode": mode or ("custom" if custom else "running"),
         "live_interval": (
             getattr(live_bucket, "start").isoformat(sep=" ") if live_bucket is not None else effective_now.isoformat(sep=" ")
         ),
@@ -1191,3 +1450,125 @@ def _source_health_summary(source_health: list[SourceHealth]) -> dict[str, int]:
         "source_health_warning": sum(1 for item in source_health if item.status == "warning"),
         "source_health_critical": sum(1 for item in source_health if item.status == "critical"),
     }
+
+
+def _data_quality_gate(config: AppConfig, inputs: Any, source_health: list[SourceHealth], buckets: list[Any]) -> dict[str, int | str]:
+    critical: list[str] = [f"{item.label}: {item.message}" for item in source_health if item.status == "critical"]
+    warnings: list[str] = [f"{item.label}: {item.message}" for item in source_health if item.status == "warning"]
+    window_rows = _window_input_rows(inputs, buckets)
+    _append_generation_gate_messages("Wind", window_rows["wind"], config.capacities.wind_mwh, warnings, critical)
+    _append_generation_gate_messages("Solar", window_rows["solar"], config.capacities.solar_mwh, warnings, critical)
+    _append_bess_gate_messages(window_rows["bess_state"], config.capacities.bess_capacity_mwh, warnings, critical)
+    _append_price_gate_messages(window_rows["t2_pricing"], config, warnings, critical)
+    status = "critical" if critical else "warning" if warnings else "ok"
+    messages = [*critical[:4], *warnings[:4]]
+    return {
+        "data_quality_status": status,
+        "data_quality_critical_count": len(critical),
+        "data_quality_warning_count": len(warnings),
+        "data_quality_messages": " | ".join(messages) if messages else "All active inputs passed the V2 quality gate.",
+    }
+
+
+def _window_input_rows(inputs: Any, buckets: list[Any]) -> dict[str, list[dict[str, object]]]:
+    if not buckets:
+        return {"wind": [], "solar": [], "bess_state": [], "t2_pricing": []}
+    start = getattr(buckets[0], "start")
+    end = getattr(buckets[-1], "end")
+    return {
+        "wind": _rows_between(inputs.wind_rows, start, end),
+        "solar": _rows_between(inputs.solar_rows, start, end),
+        "bess_state": _rows_between(inputs.bess_rows, start, end),
+        "t2_pricing": _rows_between(inputs.price_rows, start, end),
+    }
+
+
+def _rows_between(rows: list[dict[str, object]], start: datetime, end: datetime) -> list[dict[str, object]]:
+    return [
+        row
+        for row in rows
+        if isinstance(row.get("timestamp"), datetime) and start <= row["timestamp"] < end
+    ]
+
+
+def _append_generation_gate_messages(
+    label: str,
+    rows: list[dict[str, object]],
+    rated_mwh: float,
+    warnings: list[str],
+    critical: list[str],
+) -> None:
+    if rated_mwh <= 0:
+        return
+    for row in rows:
+        value = _row_energy_value(row)
+        timestamp = row.get("timestamp")
+        if value < 0:
+            critical.append(f"{label}: negative generation at {timestamp}.")
+            return
+        if value > rated_mwh * 1.2:
+            critical.append(f"{label}: generation exceeds 120% of rated capacity at {timestamp}.")
+            return
+        if value > rated_mwh:
+            warnings.append(f"{label}: generation exceeds rated capacity at {timestamp}.")
+            return
+
+
+def _append_bess_gate_messages(
+    rows: list[dict[str, object]],
+    capacity_mwh: float,
+    warnings: list[str],
+    critical: list[str],
+) -> None:
+    lower_band = capacity_mwh * 0.05
+    upper_band = capacity_mwh * 0.95
+    for row in rows:
+        timestamp = row.get("timestamp")
+        soc = float(row.get("soc_mwh") or 0.0)
+        soh = float(row.get("soh_fraction") or 1.0)
+        if soc < 0.0 or soc > capacity_mwh:
+            critical.append(f"BESS: SOC outside physical capacity at {timestamp}.")
+            return
+        if soh <= 0.0 or soh > 1.0:
+            critical.append(f"BESS: SOH outside 0-100% at {timestamp}.")
+            return
+        if soc < lower_band or soc > upper_band:
+            warnings.append(f"BESS: SOC outside 5-95% operating band at {timestamp}.")
+            return
+        if soh < 0.7:
+            warnings.append(f"BESS: SOH below 70% at {timestamp}.")
+            return
+
+
+def _append_price_gate_messages(
+    rows: list[dict[str, object]],
+    config: AppConfig,
+    warnings: list[str],
+    critical: list[str],
+) -> None:
+    benchmark = max(config.tariffs.ppa, config.tariffs.peak_power, config.tariffs.merchant_sell_default, 1.0)
+    for row in rows:
+        timestamp = row.get("timestamp")
+        price = float(row.get("price") or 0.0)
+        if price < 0.0:
+            critical.append(f"Pricing: negative merchant price at {timestamp}.")
+            return
+        if price > benchmark * 5.0:
+            warnings.append(f"Pricing: merchant price outlier at {timestamp}.")
+            return
+
+
+def _row_energy_value(row: dict[str, object]) -> float:
+    if "mwh" in row:
+        return float(row.get("mwh") or 0.0)
+    if "kw" in row:
+        return float(row.get("kw") or 0.0) / 1000.0
+    return 0.0
+
+
+def _capacity_summary(config: AppConfig) -> str:
+    return (
+        f"Wind {config.capacities.wind_mwh:.1f} MW | "
+        f"Solar {config.capacities.solar_mwh:.1f} MW | "
+        f"BESS {config.capacities.bess_capacity_mwh:.1f} MWh"
+    )

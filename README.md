@@ -33,6 +33,12 @@ The app creates `.workspace/customers/<customer>/workspaces/<workspace>/` with v
 - Workbook-aligned variable and case registry for translating Notes-sheet codes into app assumptions, inputs, outputs, and rule work.
 - Disabled future rule-pack placeholders for annual CUF, monthly compliance, merchant buy, penalty procurement, and forecast lookahead behavior.
 - Customer/workspace isolation through trusted identity headers, with the same scope used for hosted object/index keys.
+- Portfolio-ready client/project model where `customer_id` is the client and `workspace_id` is the project.
+- Customer portfolio board with project selection, roll-up health, shortfall, peak compliance, annual CUF, and acknowledgement status.
+- Client-level user activation/deactivation shared across all projects for the client.
+- Project-level feed catalog metadata for future live-data integrations.
+- Live Board run presets for running, intraday, day-ahead, and custom windows.
+- Soft data-quality gate recorded on each advisory decision cycle.
 - Live operations UX with alert cards, filtered interval views, why-this-market drilldowns, and operator acknowledgement state.
 - Outputs: allocation CSV, summary CSV, input-version audit JSON, model-version audit JSON, and XLSX workbook.
 
@@ -100,4 +106,4 @@ When Auth0 variables are set, the app uses hosted Auth0 login directly. Configur
 - Allowed Logout URL: `<FDRE_MODEL_PUBLIC_BASE_URL>/login`
 - Allowed Web Origin: `<FDRE_MODEL_PUBLIC_BASE_URL>`
 
-If Management API credentials are also set, FDRE admins can fetch existing Auth0 users into the Users page. New Auth0 users are auto-activated as FDRE operators by default, while explicit FDRE deactivation remains a workspace-level deny. Auth0 user creation, password reset, and identity deletion stay in Auth0. Grant the machine-to-machine application only the required Auth0 Management API scopes: `read:users` and `update:users`.
+If Management API credentials are also set, FDRE admins can fetch existing Auth0 users into the Users page. New Auth0 users are auto-activated as FDRE operators by default for the client, while explicit FDRE deactivation remains a client-level deny across all projects. Auth0 user creation, password reset, and identity deletion stay in Auth0. Grant the machine-to-machine application only the required Auth0 Management API scopes: `read:users` and `update:users`.

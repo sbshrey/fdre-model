@@ -14,4 +14,5 @@ __pycache__/
 .DS_Store
 
 FDRE Model.xlsx
+*.pdf
 *.log

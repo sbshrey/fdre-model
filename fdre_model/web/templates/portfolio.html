@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Portfolio | FDRE Market Operations{% endblock %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Client Portfolio</p>
+    <h1>FDRE Project Operations</h1>
+    <p class="muted">{{ current_user.scope.customer_id }} · {{ project_count }} active project{{ "" if project_count == 1 else "s" }}</p>
+  </div>
+  {% if is_admin %}
+    <div class="actions">
+      <a class="button" href="#add-project">Add Project</a>
+    </div>
+  {% endif %}
+</section>
+
+<section class="portfolio-grid">
+  {% for row in projects %}
+    <article class="portfolio-card">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">{{ row.record.status }}</p>
+          <h2>{{ row.record.name }}</h2>
+          <p class="muted">{{ row.record.project_id }}</p>
+        </div>
+        <span class="pill {{ row.data_quality_status }}">{{ row.data_quality_status }}</span>
+      </div>
+      <div class="portfolio-meta">
+        <span><strong>Offtaker</strong>{{ row.record.offtaker or "Not set" }}</span>
+        <span><strong>Location</strong>{{ row.record.location or "Not set" }}</span>
+        <span><strong>Contract</strong>{{ row.record.contract_label or "Not set" }}</span>
+        <span><strong>Capacity</strong>{{ row.record.capacity_summary or "Default FDRE template" }}</span>
+      </div>
+      <div class="portfolio-kpis">
+        <span><strong>{{ "%.1f"|format(row.shortfall_mwh) }}</strong>Shortfall MWh</span>
+        <span><strong>{{ "%.1f"|format(row.peak_compliance_pct) }}%</strong>Peak compliance</span>
+        <span><strong>{{ "%.1f"|format(row.annual_cuf_pct) }}%</strong>Annual CUF</span>
+      </div>
+      <div class="portfolio-footer">
+        <span class="muted">Cycle {{ row.latest_cycle_at }}</span>
+        {% if row.acknowledged_by %}
+          <span class="pill ok">Ack {{ row.acknowledged_by }}</span>
+        {% else %}
+          <span class="pill warning">Needs review</span>
+        {% endif %}
+      </div>
+      <form method="post" action="{{ url_for('select_project') }}" class="actions">
+        <input type="hidden" name="project_id" value="{{ row.record.project_id }}">
+        <input type="hidden" name="next" value="{{ url_for('live_board') }}">
+        <button type="submit">Open Project</button>
+      </form>
+    </article>
+  {% else %}
+    <p class="empty-state">No projects are registered for this client.</p>
+  {% endfor %}
+</section>
+
+{% if is_admin %}
+  <section id="add-project" class="side-drawer" aria-labelledby="add-project-title">
+    <a class="drawer-scrim" href="{{ url_for('portfolio_page') }}" aria-label="Close add project panel"></a>
+    <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="add-project-title">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">Admin</p>
+          <h2 id="add-project-title">Create Project</h2>
+          <p class="muted">Creates an isolated FDRE project from the default template.</p>
+        </div>
+        <a class="drawer-close" href="{{ url_for('portfolio_page') }}" aria-label="Close add project panel">Close</a>
+      </div>
+      <form method="post" action="{{ url_for('create_project') }}" class="drawer-form">
+        <label><span>Project ID</span><input name="project_id" placeholder="sjvn-fdre" required></label>
+        <label><span>Name</span><input name="name" placeholder="SJVN FDRE" required></label>
+        <label><span>Status</span><select name="status"><option value="active">active</option><option value="planned">planned</option></select></label>
+        <label><span>Offtaker</span><input name="offtaker" placeholder="SJVN"></label>
+        <label><span>Location</span><input name="location" placeholder="Site / region"></label>
+        <label><span>Contract Label</span><input name="contract_label" placeholder="FDRE PPA"></label>
+        <label><span>Capacity Summary</span><textarea name="capacity_summary" rows="3" placeholder="Wind 211 MW | Solar 105 MW | BESS 100 MWh"></textarea></label>
+        <div class="drawer-actions">
+          <a class="button secondary" href="{{ url_for('portfolio_page') }}">Cancel</a>
+          <button type="submit">Create Project</button>
+        </div>
+      </form>
+    </aside>
+  </section>
+{% endif %}
+{% endblock %}
