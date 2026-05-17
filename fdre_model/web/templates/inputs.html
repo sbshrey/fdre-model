@@ -5,66 +5,128 @@
   <div>
     <p class="eyebrow">Versioned Inputs</p>
     <h1>Input Sources</h1>
+    <p class="muted">Manage the active operating data without mutating previous uploads. Every change creates a new auditable version.</p>
   </div>
 </section>
 
-<section class="stack">
+<section class="input-summary-grid">
+  <div>
+    <strong>{{ input_summary.active_count }}</strong>
+    <span>Active sources</span>
+  </div>
+  <div>
+    <strong>{{ input_summary.ok_count }}</strong>
+    <span>Validated sources</span>
+  </div>
+  <div>
+    <strong>{{ input_summary.override_count }}</strong>
+    <span>Operator overrides</span>
+  </div>
+  <div>
+    <strong>{{ input_summary.version_count }}</strong>
+    <span>Total versions</span>
+  </div>
+</section>
+
+<section class="stack input-source-list">
   {% for item in inputs %}
-    <article class="panel">
+    <article class="panel input-source-panel">
       <div class="panel-head">
-        <div>
-          <h2>{{ item.spec.label }}</h2>
-          <p class="muted">{{ item.spec.description }}</p>
+        <div class="source-title">
+          <span class="source-index">{{ loop.index }}</span>
+          <div>
+            <p class="eyebrow">Source Data</p>
+            <h2>{{ item.spec.label }}</h2>
+            <p class="muted">{{ item.spec.description }}</p>
+          </div>
         </div>
         {% if item.active %}
-          <div class="actions">
-            <span class="pill ok">Active {{ item.active.version_id }}</span>
+          <div class="source-actions">
+            <span class="pill ok">Active</span>
+            {% if item.active.source_type[:4] == "seed" %}
+              <span class="pill">Reference</span>
+            {% else %}
+              <span class="pill warning">Override</span>
+            {% endif %}
             <a class="button ghost" href="{{ url_for('edit_input', dataset_key=item.spec.key) }}">Edit Active</a>
             <a class="button ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=item.active.version_id) }}">Download Active CSV</a>
           </div>
         {% endif %}
       </div>
-      <div class="meta-grid">
-        <div><strong>Headers</strong><span>{{ item.spec.expected_headers | join(", ") }}</span></div>
-        <div><strong>Rows</strong><span>{{ item.active.row_count if item.active else "0" }}</span></div>
-        <div><strong>Coverage</strong><span>{{ item.active.coverage_start if item.active else "-" }} to {{ item.active.coverage_end if item.active else "-" }}</span></div>
-        <div><strong>Source</strong><span>{{ item.active.source_type if item.active else "-" }}</span></div>
+
+      <div class="input-status-strip">
+        <div>
+          <strong>Active version</strong>
+          <span class="mono">{{ item.active.version_id if item.active else "missing" }}</span>
+        </div>
+        <div>
+          <strong>Coverage</strong>
+          <span>{{ item.active.coverage_start if item.active else "-" }} to {{ item.active.coverage_end if item.active else "-" }}</span>
+        </div>
+        <div>
+          <strong>Rows</strong>
+          <span>{{ item.active.row_count if item.active else "0" }}</span>
+        </div>
+        <div>
+          <strong>Source</strong>
+          <span>{{ item.active.source_type if item.active else "-" }}</span>
+        </div>
+        <div>
+          <strong>Headers</strong>
+          <span>{{ item.spec.expected_headers | join(", ") }}</span>
+        </div>
       </div>
-      <div class="split">
-        <form method="post" action="{{ url_for('upload_input', dataset_key=item.spec.key) }}" enctype="multipart/form-data" class="inline-form">
+
+      <div class="input-actions-grid">
+        <form method="post" action="{{ url_for('upload_input', dataset_key=item.spec.key) }}" enctype="multipart/form-data" class="input-action-box">
+          <h2>{{ item.spec.label }}</h2>
+          <p class="muted">Upload a validated CSV file and make it active immediately.</p>
           <input type="file" name="file" accept=".csv,text/csv">
           <button type="submit">Upload</button>
         </form>
-        <form method="post" action="{{ url_for('manual_input', dataset_key=item.spec.key) }}" class="manual-form">
+        <form method="post" action="{{ url_for('manual_input', dataset_key=item.spec.key) }}" class="input-action-box">
+          <h2>Paste Complete CSV</h2>
+          <p class="muted">Use for one-off replacement data. Window edits are better for small corrections.</p>
           <input type="hidden" name="source_type" value="manual">
           <textarea name="csv_text" rows="4" placeholder="{{ item.spec.expected_headers | join(',') }}"></textarea>
           <button type="submit">Save Manual Version</button>
         </form>
       </div>
+
       {% if item.versions %}
-        <table class="compact" data-syncfusion-grid="input-versions-{{ item.spec.key }}" data-grid-page-size="5">
-          <thead><tr><th>Version</th><th>Created</th><th>User</th><th>Rows</th><th>Actions</th></tr></thead>
-          <tbody>
-            {% for version in item.versions[:5] %}
-              <tr>
-                <td class="mono">{{ version.version_id }}</td>
-                <td>{{ version.created_at }}</td>
-                <td>{{ version.user_email }}</td>
-                <td>{{ version.row_count }}</td>
-                <td class="row-actions">
-                  <a class="button small ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=version.version_id) }}">Download</a>
-                  {% if item.active and item.active.version_id == version.version_id %}
-                    <span class="muted">Active</span>
-                  {% else %}
-                    <form method="post" action="{{ url_for('activate_input', dataset_key=item.spec.key, version_id=version.version_id) }}">
-                      <button class="small" type="submit">Activate</button>
-                    </form>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="version-history-head">
+          <div>
+            <h2>Version History</h2>
+            <p class="muted">Latest five versions. Older files remain stored and can be reactivated from this table.</p>
+          </div>
+          <span class="pill">{{ item.versions|length }} versions</span>
+        </div>
+        <div class="table-shell input-history-shell">
+          <table class="compact" data-syncfusion-grid="input-versions-{{ item.spec.key }}" data-grid-page-size="5">
+            <thead><tr><th>Version</th><th>Created</th><th>User</th><th>Rows</th><th>Source</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for version in item.versions[:5] %}
+                <tr>
+                  <td class="mono">{{ version.version_id }}</td>
+                  <td>{{ version.created_at }}</td>
+                  <td>{{ version.user_email }}</td>
+                  <td>{{ version.row_count }}</td>
+                  <td>{{ version.source_type }}</td>
+                  <td class="row-actions">
+                    <a class="button small ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=version.version_id) }}">Download</a>
+                    {% if item.active and item.active.version_id == version.version_id %}
+                      <span class="pill ok">Active</span>
+                    {% else %}
+                      <form method="post" action="{{ url_for('activate_input', dataset_key=item.spec.key, version_id=version.version_id) }}">
+                        <button class="small" type="submit">Activate</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       {% endif %}
     </article>
   {% endfor %}

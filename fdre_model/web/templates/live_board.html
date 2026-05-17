@@ -227,7 +227,11 @@
           <td>{{ "%.1f"|format(row.bess_charge_mwh|float - row.bess_discharge_mwh|float) }}</td>
           <td>{{ "%.1f"|format(row.shortfall_mwh|float) }}</td>
           <td>{{ row.recommended_market }}</td>
-          <td class="mono">{{ row.applied_rule_ids }}</td>
+          {% if is_admin %}
+            <td class="mono">{{ row.applied_rule_ids }}</td>
+          {% else %}
+            <td>{{ row.business_rule }}</td>
+          {% endif %}
           <td class="why-column">
             <details class="why-detail">
               <summary>Why</summary>
@@ -251,13 +255,15 @@
                     <li>{{ step }}</li>
                   {% endfor %}
                 </ol>
-                <details class="technical-audit">
-                  <summary>Technical audit</summary>
-                  {% for item in row.why.technical %}
-                    <strong>{{ item.label }}</strong>
-                    <p class="mono wrap">{{ item.value }}</p>
-                  {% endfor %}
-                </details>
+                {% if is_admin %}
+                  <details class="technical-audit">
+                    <summary>Technical audit</summary>
+                    {% for item in row.why.technical %}
+                      <strong>{{ item.label }}</strong>
+                      <p class="mono wrap">{{ item.value }}</p>
+                    {% endfor %}
+                  </details>
+                {% endif %}
               </div>
             </details>
           </td>

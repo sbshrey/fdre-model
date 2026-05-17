@@ -78,16 +78,22 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b'data-syncfusion-grid="live-board"' in live.data
     assert b'class="why-column" data-grid-width="360">Why' in live.data
     assert b"Rule path" in live.data
-    assert b"Technical audit" in live.data
+    assert b"Technical audit" not in live.data
     assert b"PPA selected" in live.data or b"Peak obligation" in live.data
     assert b"cdn.syncfusion.com/ej2/33.2.3" not in live.data
     assert b"syncfusion-tables.js" not in live.data
+
+    admin_live = client.get("/", headers=admin_headers)
+    assert admin_live.status_code == 200
+    assert b"Technical audit" in admin_live.data
 
     inputs = client.get("/inputs")
     assert inputs.status_code == 200
     assert b"Solar Generation" in inputs.data
     assert b"input-versions-solar" in inputs.data
     assert b"Edit Active" in inputs.data
+    assert b"Active sources" in inputs.data
+    assert b"Operator overrides" in inputs.data
 
     upload = client.post(
         "/inputs/solar/manual",
@@ -208,6 +214,33 @@ def test_input_versions_can_be_downloaded(tmp_path: Path) -> None:
     manual_download = client.get(manual_download_path.group(1).decode("utf-8"))
     assert manual_download.status_code == 200
     assert b"2026-04-01 12:00,30" in manual_download.data
+
+
+def test_operator_cycle_downloads_hide_internal_rule_audit(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
+    live = client.get("/")
+    cycle_id = re.search(rb"cycle-\d+", live.data).group(0).decode("utf-8")
+
+    operator_csv = client.get(f"/cycles/{cycle_id}/download/allocation_csv")
+
+    assert operator_csv.status_code == 200
+    assert operator_csv.headers["Content-Disposition"] == "attachment; filename=market_allocation_public.csv"
+    assert b"reason" in operator_csv.data
+    assert b"rule" in operator_csv.data
+    assert b"audit_trace" not in operator_csv.data
+    assert b"skipped_rule_ids" not in operator_csv.data
+    assert b"input_versions=" not in operator_csv.data
+
+    blocked_json = client.get(f"/cycles/{cycle_id}/download/input_versions_json")
+    assert blocked_json.status_code == 403
+
+    admin_csv = client.get(f"/cycles/{cycle_id}/download/allocation_csv", headers=admin_headers)
+    assert admin_csv.status_code == 200
+    assert b"audit_trace" in admin_csv.data
+    assert b"skipped_rule_ids" in admin_csv.data
 
 
 def test_active_input_can_be_edited_in_app_as_new_version(tmp_path: Path) -> None:

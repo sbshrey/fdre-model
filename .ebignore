@@ -8,6 +8,7 @@ output/
 __pycache__/
 *.py[cod]
 *.egg-info/
+*.pdf
 tests/
 FDRE Model.xlsx
 progress.md

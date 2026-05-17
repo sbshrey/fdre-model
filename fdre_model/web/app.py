@@ -303,6 +303,16 @@ def create_app(
         if path is None or not path.exists():
             flash("Artifact not found.", "error")
             return redirect(url_for("cycle_page", cycle_id=cycle_id))
+        user = current_user()
+        if user is None:
+            abort(401)
+        if not user.is_admin:
+            if artifact_key == "allocation_csv":
+                return _sanitized_allocation_csv_response(store.read_allocation_rows(cycle))
+            if artifact_key == "workbook":
+                return _sanitized_workbook_response(store.read_allocation_rows(cycle), cycle.summary)
+            if artifact_key in {"input_versions_json", "model_versions_json"}:
+                abort(403)
         return send_file(path, as_attachment=True, download_name=path.name)
 
     @app.get("/inputs")
@@ -313,7 +323,12 @@ def create_app(
             active = store.active_version(state, spec.key)
             versions = store.list_versions(state, spec.key)
             inputs.append({"spec": spec, "active": active, "versions": versions})
-        return render_template("inputs.html", active_page="inputs", inputs=inputs)
+        return render_template(
+            "inputs.html",
+            active_page="inputs",
+            inputs=inputs,
+            input_summary=_input_page_summary(inputs),
+        )
 
     @app.get("/inputs/<dataset_key>/download/<version_id>")
     def download_input(dataset_key: str, version_id: str) -> Response:
@@ -1070,7 +1085,155 @@ def _filter_rows(rows: list[dict[str, str]], filters: dict[str, str]) -> list[di
 
 
 def _rows_with_explanations(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
-    return [{**row, "why": _why_for_row(row)} for row in rows]
+    return [
+        {
+            **row,
+            "business_rule": _business_rule_labels(row.get("applied_rule_ids")),
+            "why": _why_for_row(row),
+        }
+        for row in rows
+    ]
+
+
+def _input_page_summary(inputs: list[dict[str, Any]]) -> dict[str, int]:
+    active_count = sum(1 for item in inputs if item.get("active") is not None)
+    version_count = sum(len(item.get("versions") or []) for item in inputs)
+    override_count = sum(
+        1
+        for item in inputs
+        if item.get("active") is not None
+        and not str(item["active"].source_type).startswith("seed")
+    )
+    ok_count = sum(
+        1
+        for item in inputs
+        if item.get("active") is not None
+        and str(item["active"].validation_status).lower() == "ok"
+    )
+    return {
+        "active_count": active_count,
+        "version_count": version_count,
+        "override_count": override_count,
+        "ok_count": ok_count,
+    }
+
+
+_OPERATOR_ALLOCATION_COLUMNS = [
+    "interval_start",
+    "interval_end",
+    "status",
+    "peak",
+    "wind_mwh",
+    "solar_mwh",
+    "available_mwh",
+    "merchant_price",
+    "bess_open_mwh",
+    "bess_close_mwh",
+    "peak_power_sale_mwh",
+    "ppa_sale_mwh",
+    "merchant_sale_mwh",
+    "bess_charge_mwh",
+    "bess_discharge_mwh",
+    "curtailment_mwh",
+    "shortfall_mwh",
+    "penalty_value",
+    "revenue_value",
+    "recommended_market",
+    "rule",
+    "reason",
+]
+
+
+def _sanitized_allocation_csv_response(rows: list[dict[str, str]]) -> Response:
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=_OPERATOR_ALLOCATION_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(_operator_allocation_row(row))
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=market_allocation_public.csv"
+    return response
+
+
+def _sanitized_workbook_response(rows: list[dict[str, str]], summary: dict[str, Any]) -> Response:
+    import xlsxwriter
+
+    buffer = io.BytesIO()
+    workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
+    try:
+        header_fmt = workbook.add_format({"bold": True, "bg_color": "#E8EEF7", "border": 1})
+        number_fmt = workbook.add_format({"num_format": "#,##0.00"})
+        allocation_rows = [_operator_allocation_row(row) for row in rows]
+        _write_public_workbook_sheet(workbook, "Allocation", _OPERATOR_ALLOCATION_COLUMNS, allocation_rows, header_fmt, number_fmt)
+        _write_public_workbook_sheet(
+            workbook,
+            "Summary",
+            ["metric", "value"],
+            [{"metric": key, "value": value} for key, value in summary.items()],
+            header_fmt,
+            number_fmt,
+        )
+    finally:
+        workbook.close()
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="fdre_market_model_public.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _write_public_workbook_sheet(
+    workbook: Any,
+    sheet_name: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    header_fmt: Any,
+    number_fmt: Any,
+) -> None:
+    worksheet = workbook.add_worksheet(sheet_name)
+    for col, column in enumerate(columns):
+        worksheet.write(0, col, column, header_fmt)
+    for row_index, row in enumerate(rows, start=1):
+        for col, column in enumerate(columns):
+            value = row.get(column, "")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                worksheet.write_number(row_index, col, float(value), number_fmt)
+            else:
+                worksheet.write(row_index, col, "" if value is None else str(value))
+    worksheet.freeze_panes(1, 0)
+    worksheet.autofilter(0, 0, max(len(rows), 1), max(len(columns) - 1, 0))
+    for col, column in enumerate(columns):
+        width = min(max(len(column) + 2, 12), 42)
+        worksheet.set_column(col, col, width)
+
+
+def _operator_allocation_row(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "interval_start": row.get("interval_start", ""),
+        "interval_end": row.get("interval_end", ""),
+        "status": row.get("status", ""),
+        "peak": "Peak" if row.get("is_peak") == "1" else "Non-peak",
+        "wind_mwh": row.get("wind_mwh", ""),
+        "solar_mwh": row.get("solar_mwh", ""),
+        "available_mwh": row.get("available_mwh", ""),
+        "merchant_price": row.get("merchant_price", ""),
+        "bess_open_mwh": row.get("bess_open_mwh", ""),
+        "bess_close_mwh": row.get("bess_close_mwh", ""),
+        "peak_power_sale_mwh": row.get("peak_power_sale_mwh", ""),
+        "ppa_sale_mwh": row.get("ppa_sale_mwh", ""),
+        "merchant_sale_mwh": row.get("merchant_sale_mwh", ""),
+        "bess_charge_mwh": row.get("bess_charge_mwh", ""),
+        "bess_discharge_mwh": row.get("bess_discharge_mwh", ""),
+        "curtailment_mwh": row.get("curtailment_mwh", ""),
+        "shortfall_mwh": row.get("shortfall_mwh", ""),
+        "penalty_value": row.get("penalty_value", ""),
+        "revenue_value": row.get("revenue_value", ""),
+        "recommended_market": row.get("recommended_market", ""),
+        "rule": _business_rule_labels(row.get("applied_rule_ids")),
+        "reason": _why_for_row(row)["summary"],
+    }
 
 
 def _why_for_row(row: dict[str, str]) -> dict[str, Any]:
@@ -1243,6 +1406,29 @@ def _why_outcomes(
 def _rule_text(value: str | None) -> str:
     text = (value or "").strip()
     return text.replace("_", " ") if text else "none"
+
+
+_BUSINESS_RULE_NAMES = {
+    "peak_power_obligation": "Peak obligation",
+    "non_peak_workbook_dispatch": "Non-peak workbook dispatch",
+    "ppa_sale": "PPA sale",
+    "merchant_sale": "Merchant sale",
+    "bess_charge": "BESS charge",
+    "curtail_residual": "Curtailment",
+    "forecast_peak_charge": "Forecast peak monitor",
+    "annual_cuf_monitor": "Annual CUF monitor",
+    "monthly_compliance_monitor": "Monthly compliance monitor",
+    "merchant_buy_shortfall": "Merchant buy monitor",
+    "penalty_procurement_monitor": "Penalty procurement monitor",
+}
+
+
+def _business_rule_labels(value: str | None) -> str:
+    rule_ids = [part.strip() for part in (value or "").split(",") if part.strip()]
+    if not rule_ids:
+        return "No allocation rule"
+    labels = [_BUSINESS_RULE_NAMES.get(rule_id, rule_id.replace("_", " ").title()) for rule_id in rule_ids]
+    return " + ".join(labels)
 
 
 def _format_mwh(value: float) -> str:

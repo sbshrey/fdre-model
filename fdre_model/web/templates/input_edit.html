@@ -13,15 +13,31 @@
   </div>
 </section>
 
-<section class="panel">
+<section class="editor-guide">
+  <div>
+    <strong>1</strong>
+    <span>Choose the time window to inspect.</span>
+  </div>
+  <div>
+    <strong>2</strong>
+    <span>Edit interval values or paste matching CSV rows.</span>
+  </div>
+  <div>
+    <strong>3</strong>
+    <span>Save a new active version with user and source audit.</span>
+  </div>
+</section>
+
+<section class="panel input-source-panel">
   <div class="panel-head">
     <div>
+      <p class="eyebrow">Currently Active</p>
       <h2>Active Version</h2>
       <p class="muted mono">{{ active.version_id }}</p>
     </div>
     <span class="pill ok">{{ active.source_type }}</span>
   </div>
-  <div class="meta-grid">
+  <div class="input-status-strip">
     <div><strong>Rows</strong><span>{{ row_count }}</span></div>
     <div><strong>Coverage</strong><span>{{ active.coverage_start }} to {{ active.coverage_end }}</span></div>
     <div><strong>Created By</strong><span>{{ active.user_email }}</span></div>
@@ -29,17 +45,23 @@
   </div>
 </section>
 
-<form method="get" class="panel form-grid input-window-form">
-  <label>
-    <span>Start</span>
-    <input type="datetime-local" name="start" value="{{ start }}">
-  </label>
-  <label>
-    <span>End</span>
-    <input type="datetime-local" name="end" value="{{ end }}">
-  </label>
-  <div class="form-actions input-window-actions">
-    <button type="submit">Load Window</button>
+<form method="get" class="panel input-window-form">
+  <div>
+    <p class="eyebrow">Preview Window</p>
+    <h2>Editable Rows</h2>
+  </div>
+  <div class="input-window-fields">
+    <label>
+      <span>Start</span>
+      <input type="datetime-local" name="start" value="{{ start }}">
+    </label>
+    <label>
+      <span>End</span>
+      <input type="datetime-local" name="end" value="{{ end }}">
+    </label>
+    <div class="form-actions input-window-actions">
+      <button type="submit">Load Window</button>
+    </div>
   </div>
 </form>
 
@@ -51,7 +73,7 @@
     <div class="panel-head">
       <div>
         <h2>Window Rows</h2>
-        <p class="muted">Edit interval values directly. Timestamps are locked so cadence and coverage stay consistent.</p>
+        <p class="muted">{{ rows|length }} row{% if rows|length != 1 %}s{% endif %} loaded. Timestamps are locked so cadence and coverage stay consistent.</p>
       </div>
       <button type="submit">Save Edited Version</button>
     </div>
@@ -98,6 +120,7 @@
   <section class="panel paste-editor">
     <div class="panel-head">
       <div>
+        <p class="eyebrow">Bulk Correction</p>
         <h2>Paste CSV Replacement</h2>
         <p class="muted">Optional. If populated, pasted rows replace matching timestamps and the table edits above are ignored.</p>
       </div>
