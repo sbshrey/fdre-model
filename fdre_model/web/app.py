@@ -647,7 +647,7 @@ def create_app(
 
     @app.get("/rules")
     def rules_page() -> str:
-        require_model_admin()
+        require_admin()
         state = workspace()
         config = store.load_config(state)
         return render_template(
@@ -662,7 +662,7 @@ def create_app(
 
     @app.post("/rules/save")
     def save_rules() -> Response:
-        require_model_admin()
+        require_admin()
         state = workspace()
         existing = {rule.rule_id: rule for rule in store.load_rules(state)}
         rules: list[RuleDefinition] = []
@@ -691,8 +691,9 @@ def create_app(
         return redirect(url_for("rules_page"))
 
     @app.get("/assumptions")
+    @app.get("/config")
     def assumptions_page() -> str:
-        require_model_admin()
+        require_admin()
         state = workspace()
         config = store.load_config(state)
         return render_template(
@@ -706,7 +707,7 @@ def create_app(
 
     @app.post("/assumptions/save")
     def save_assumptions() -> Response:
-        require_model_admin()
+        require_admin()
         state = workspace()
         current = store.load_config(state).to_dict()
         try:
@@ -941,6 +942,13 @@ def _env_first(*names: str) -> str | None:
         if value:
             return value
     return None
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.environ.get(name) or "").strip() or default)
+    except ValueError:
+        return default
 
 
 def _user_with_role(user: CurrentUser, role: str) -> CurrentUser:
@@ -1336,6 +1344,7 @@ def _live_window_context(cycle: Any, rows: list[dict[str, str]], config: AppConf
     forecast_rows = _summary_int(cycle.summary, "forecast_rows", sum(1 for row in rows if row.get("status") == "forecast"))
     total_rows = actual_rows + live_rows + forecast_rows
     live_interval = str(cycle.summary.get("live_interval") or _live_interval_from_rows(rows) or cycle.window_start)
+    refresh_settings = _live_refresh_settings()
     return {
         "mode": str(cycle.summary.get("window_mode") or "running"),
         "start": _datetime_local(_parse_input_datetime(cycle.window_start)),
@@ -1350,6 +1359,21 @@ def _live_window_context(cycle: Any, rows: list[dict[str, str]], config: AppConf
             f"{config.market_model.recent_hours} actual + 1 live + "
             f"{config.market_model.forecast_hours} forecast = {config.market_model.recent_hours + 1 + config.market_model.forecast_hours}"
         ),
+        **refresh_settings,
+    }
+
+
+def _live_refresh_settings() -> dict[str, int]:
+    min_seconds = max(5, _env_int("FDRE_MODEL_LIVE_REFRESH_MIN_SECONDS", 15))
+    max_seconds = _env_int("FDRE_MODEL_LIVE_REFRESH_MAX_SECONDS", 3600)
+    if max_seconds < min_seconds:
+        max_seconds = min_seconds
+    default_seconds = _env_int("FDRE_MODEL_LIVE_REFRESH_SECONDS", 60)
+    default_seconds = min(max(default_seconds, min_seconds), max_seconds)
+    return {
+        "refresh_default_seconds": default_seconds,
+        "refresh_min_seconds": min_seconds,
+        "refresh_max_seconds": max_seconds,
     }
 
 

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% import "components/collapsible.html" as ui %}
 {% import "components/icons.html" as icons %}
-{% block title %}Assumptions | FDRE Market Operations{% endblock %}
+{% block title %}Config | FDRE Market Operations{% endblock %}
 {% block content %}
 <section class="page-header">
   <div>
-    <p class="eyebrow">Assumptions</p>
+    <p class="eyebrow">Model Config</p>
     <h1>Market Config</h1>
     {% if assumption_version %}
       <p class="muted">Active version {{ assumption_version.version_id }} · {{ assumption_version.user_email }} · {{ assumption_version.created_at }}</p>

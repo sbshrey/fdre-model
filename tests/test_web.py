@@ -95,6 +95,14 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"More" in live.data
     assert b"Current operating mix" in live.data
     assert b"default 6 actual + 1 live + 24 forecast = 31" not in live.data
+    assert b"Auto-refresh" in live.data
+    assert b"Off \xc2\xb7 60s" in live.data
+    assert b"Default 60s" in live.data
+    assert b"data-live-auto-refresh" in live.data
+    assert b'data-default-seconds="60"' in live.data
+    assert b'min="15"' in live.data
+    assert b'max="3600"' in live.data
+    assert b'http-equiv="refresh"' not in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data
     assert b'data-collapsible' in live.data
     assert b'id="live-window-trigger"' in live.data
@@ -166,6 +174,9 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"Peak Power Obligation" in rules.data
     assert b"Rule Versions" in rules.data
     assert b"Active Rule Version" in rules.data
+    assert b"Use in Model" in rules.data
+    assert b"Selection mode" in rules.data
+    assert b"rule-detail-card" in rules.data
     assert b"Condition" in rules.data
     assert b"Action" in rules.data
     assert b"Rule Case Reference" in rules.data
@@ -482,7 +493,7 @@ def test_admin_routes_require_admin_role(tmp_path: Path) -> None:
     assert client.get("/users", headers=admin_headers).status_code == 200
 
 
-def test_auth0_client_admin_is_not_model_admin_by_default(tmp_path: Path, monkeypatch) -> None:
+def test_auth0_admin_can_access_rules_and_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("FDRE_AUTH0_DOMAIN", "example.auth0.com")
     monkeypatch.setenv("FDRE_AUTH0_CLIENT_ID", "client-id")
     monkeypatch.setenv("FDRE_AUTH0_CLIENT_SECRET", "client-secret")
@@ -499,16 +510,17 @@ def test_auth0_client_admin_is_not_model_admin_by_default(tmp_path: Path, monkey
     portfolio = client.get("/portfolio")
 
     assert portfolio.status_code == 200
-    assert b">Rules<" not in portfolio.data
-    assert b">Assumptions<" not in portfolio.data
+    assert b">Rules<" in portfolio.data
+    assert b">Config<" in portfolio.data
     assert b">Users<" in portfolio.data
     assert b"Project code" in portfolio.data
     assert b"Offtaker" not in portfolio.data
     assert b"Capacity Summary" not in portfolio.data
-    assert client.get("/rules").status_code == 403
-    assert client.post("/rules/save").status_code == 403
-    assert client.get("/assumptions").status_code == 403
-    assert client.post("/assumptions/save").status_code == 403
+    assert client.get("/rules").status_code == 200
+    assert client.post("/rules/save").status_code == 302
+    assert client.get("/config").status_code == 200
+    assert client.get("/assumptions").status_code == 200
+    assert client.post("/assumptions/save").status_code == 302
     users_page = client.get("/users")
     assert users_page.status_code == 200
     assert b"Inactive access" in users_page.data
@@ -537,7 +549,7 @@ def test_auth0_internal_admin_can_access_model_admin_pages(tmp_path: Path, monke
 
     assert portfolio.status_code == 200
     assert b">Rules<" in portfolio.data
-    assert b">Assumptions<" in portfolio.data
+    assert b">Config<" in portfolio.data
     assert client.get("/rules").status_code == 200
     assert client.get("/assumptions").status_code == 200
 
@@ -549,7 +561,7 @@ def test_operator_nav_hides_admin_pages(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert b">Rules<" not in response.data
-    assert b">Assumptions<" not in response.data
+    assert b">Config<" not in response.data
     assert b">Users<" not in response.data
 
 
@@ -791,6 +803,23 @@ def test_live_board_run_presets(tmp_path: Path) -> None:
     assert day_ahead.status_code == 200
     assert b"day-ahead" in day_ahead.data
     assert b"0 actual + 0 live + 24 forecast = 24" in day_ahead.data
+
+
+def test_live_board_auto_refresh_settings_are_configurable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("FDRE_MODEL_LIVE_REFRESH_SECONDS", "120")
+    monkeypatch.setenv("FDRE_MODEL_LIVE_REFRESH_MIN_SECONDS", "30")
+    monkeypatch.setenv("FDRE_MODEL_LIVE_REFRESH_MAX_SECONDS", "180")
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+
+    live = client.get("/live")
+
+    assert live.status_code == 200
+    assert b'data-default-seconds="120"' in live.data
+    assert b'min="30"' in live.data
+    assert b'max="180"' in live.data
+    assert b"Off \xc2\xb7 120s" in live.data
+    assert b"Default 120s" in live.data
 
 
 def test_data_quality_gate_marks_degraded_advisory_cycles(tmp_path: Path) -> None:

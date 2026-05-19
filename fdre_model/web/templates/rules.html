@@ -23,6 +23,11 @@
     <strong>{{ rules|length }}</strong>
     <small>{{ enabled_rule_count }} enabled in execution order</small>
   </div>
+  <div class="summary-tile">
+    <span>{{ icons.icon("check-circle") }}<span>Selection mode</span></span>
+    <strong>Admin</strong>
+    <small>Switch rules on or off, then save and recalculate.</small>
+  </div>
 </section>
 {% if rule_version %}
   {% call ui.section("rules-version-meta", "Active Rule Version", "Model Metadata", rule_version.summary, rule_version.source_type, icon_name="history") %}
@@ -38,26 +43,51 @@
   <div class="panel-head">
     <div>
       <h2>Rule Priority Editor</h2>
-      <p class="muted">Keep the execution order visible; condition and action JSON remain editable for admins.</p>
+      <p class="muted">Choose which rule packs participate in the next run, then tune their execution order.</p>
     </div>
     <button type="submit">{{ icons.icon("check-circle") }}<span>Save Rules</span></button>
   </div>
   <div class="table-shell">
     <table data-syncfusion-grid="rules-admin" data-grid-height="620" data-grid-page-size="10">
-      <thead><tr><th>Enabled</th><th>Priority</th><th>Rule</th><th>Advanced</th></tr></thead>
+      <thead>
+        <tr>
+          <th data-grid-width="170">Use in Model</th>
+          <th data-grid-width="140">Priority</th>
+          <th data-grid-width="370">Rule</th>
+          <th data-grid-width="300">Advanced</th>
+        </tr>
+      </thead>
       <tbody>
         {% for rule in rules|sort(attribute='priority') %}
           <tr>
-            <td><input type="checkbox" name="enabled:{{ rule.rule_id }}" {% if rule.enabled %}checked{% endif %}></td>
+            <td>
+              <label class="rule-switch">
+                <input type="checkbox" name="enabled:{{ rule.rule_id }}" aria-label="Use {{ rule.name }} in model" {% if rule.enabled %}checked{% endif %}>
+                <span class="rule-switch-ui" aria-hidden="true"></span>
+                <span class="rule-switch-label" aria-hidden="true"></span>
+              </label>
+            </td>
             <td><input class="priority-input" type="number" name="priority:{{ rule.rule_id }}" value="{{ rule.priority }}"></td>
             <td><strong>{{ rule.name }}</strong><br><span class="mono">{{ rule.rule_id }}</span><br><span class="pill">{{ icons.icon("file-text") }}<span>{{ rule.rule_pack }}</span></span></td>
             <td>
-              <details class="row-detail">
+              <details class="row-detail rule-detail-popover">
                 <summary>{{ icons.icon("sliders") }}<span>Rule details</span></summary>
-                <div class="rule-detail-grid">
-                  <p class="muted">{{ rule.description }}</p>
-                  <label><span>Condition</span><textarea class="json-input" name="condition:{{ rule.rule_id }}" rows="5">{{ rule.condition | tojson }}</textarea></label>
-                  <label><span>Action</span><textarea class="json-input" name="action:{{ rule.rule_id }}" rows="5">{{ rule.action | tojson }}</textarea></label>
+                <div class="rule-detail-card">
+                  <div class="rule-detail-card-head">
+                    <span class="pill">{{ icons.icon("file-text") }}<span>{{ rule.rule_pack }}</span></span>
+                    <strong>{{ rule.name }}</strong>
+                    <p>{{ rule.description }}</p>
+                  </div>
+                  <div class="rule-detail-fields">
+                    <label>
+                      <span>Condition</span>
+                      <textarea class="json-input" name="condition:{{ rule.rule_id }}" rows="5">{{ rule.condition | tojson }}</textarea>
+                    </label>
+                    <label>
+                      <span>Action</span>
+                      <textarea class="json-input" name="action:{{ rule.rule_id }}" rows="5">{{ rule.action | tojson }}</textarea>
+                    </label>
+                  </div>
                 </div>
               </details>
             </td>

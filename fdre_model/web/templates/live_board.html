@@ -2,11 +2,6 @@
 {% import "components/collapsible.html" as ui %}
 {% import "components/icons.html" as icons %}
 {% block title %}Live Board | FDRE Market Operations{% endblock %}
-{% block head_extra %}
-  {% if active_page == "live" %}
-    <meta http-equiv="refresh" content="60">
-  {% endif %}
-{% endblock %}
 {% block content %}
 {% set window_counts = namespace(actual=0, live=0, forecast=0) %}
 {% for row in rows %}
@@ -59,13 +54,55 @@
           </span>
           <span>
             <strong>Refresh</strong>
-            <code>60s · {{ storage_backend }} storage</code>
+            <code>{{ window.refresh_default_seconds }}s default · {{ storage_backend }} storage</code>
           </span>
         </div>
       </details>
     {% endif %}
   </div>
   <div class="actions live-command-actions">
+    <details
+      class="live-auto-refresh auto-refresh-menu"
+      data-live-auto-refresh
+      data-default-seconds="{{ window.refresh_default_seconds }}"
+      data-min-seconds="{{ window.refresh_min_seconds }}"
+      data-max-seconds="{{ window.refresh_max_seconds }}"
+    >
+      <summary class="auto-refresh-summary">
+        <span class="auto-refresh-summary-icon">{{ icons.icon("refresh-cw") }}</span>
+        <span class="auto-refresh-summary-copy">
+          <span>Auto-refresh</span>
+          <strong data-auto-refresh-status>Off · {{ window.refresh_default_seconds }}s</strong>
+        </span>
+        {{ icons.icon("chevron-down") }}
+      </summary>
+      <div class="auto-refresh-panel">
+        <label class="auto-refresh-switch auto-refresh-panel-toggle">
+          <input type="checkbox" data-auto-refresh-toggle aria-label="Auto-refresh live board">
+          <span class="auto-refresh-slider" aria-hidden="true"></span>
+          <span class="auto-refresh-switch-copy">
+            <strong>Enable auto-refresh</strong>
+            <small>Refreshes this Live Board only.</small>
+          </span>
+        </label>
+        <label class="auto-refresh-frequency">
+          <span>Frequency</span>
+          <span class="auto-refresh-input-wrap">
+            <input
+              type="number"
+              data-auto-refresh-seconds
+              min="{{ window.refresh_min_seconds }}"
+              max="{{ window.refresh_max_seconds }}"
+              step="5"
+              value="{{ window.refresh_default_seconds }}"
+              aria-label="Auto-refresh frequency in seconds"
+            >
+            <span>seconds</span>
+          </span>
+        </label>
+        <p class="auto-refresh-help">Default {{ window.refresh_default_seconds }}s · allowed {{ window.refresh_min_seconds }}-{{ window.refresh_max_seconds }}s</p>
+      </div>
+    </details>
     <form method="post" action="{{ url_for('recalculate_cycle') }}">
       <input type="hidden" name="preset" value="{{ window.mode }}">
       {% if window.mode == "custom" %}

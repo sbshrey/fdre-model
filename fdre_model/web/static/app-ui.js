@@ -351,8 +351,226 @@
     });
   }
 
+  function detailCardFor(details) {
+    return details.querySelector(".rule-detail-card, .history-business-card, .row-detail-grid");
+  }
+
+  function clearFloatingDetail(details) {
+    var card = detailCardFor(details);
+    if (!card) {
+      return;
+    }
+    ["position", "top", "left", "right", "width", "maxHeight"].forEach(function (name) {
+      card.style.removeProperty(name);
+    });
+  }
+
+  function positionFloatingDetail(details) {
+    if (!details.open || !details.closest(".syncfusion-grid-host")) {
+      clearFloatingDetail(details);
+      return;
+    }
+    var summary = details.querySelector("summary");
+    var card = detailCardFor(details);
+    if (!summary || !card) {
+      return;
+    }
+    var gap = 8;
+    var padding = 16;
+    var summaryRect = summary.getBoundingClientRect();
+    var desiredWidth = Math.min(430, window.innerWidth - padding * 2);
+    var maxHeight = Math.min(560, window.innerHeight - padding * 2);
+    var left = Math.min(summaryRect.right - desiredWidth, window.innerWidth - desiredWidth - padding);
+    left = Math.max(padding, left);
+
+    card.style.position = "fixed";
+    card.style.right = "auto";
+    card.style.width = desiredWidth + "px";
+    card.style.maxHeight = maxHeight + "px";
+    card.style.left = left + "px";
+    card.style.top = "0px";
+
+    var measuredHeight = Math.min(card.scrollHeight, maxHeight);
+    var top = summaryRect.bottom + gap;
+    if (top + measuredHeight > window.innerHeight - padding) {
+      top = summaryRect.top - measuredHeight - gap;
+    }
+    card.style.top = Math.max(padding, top) + "px";
+  }
+
+  var floatingDetailsBound = false;
+
+  function enhanceFloatingDetails() {
+    if (floatingDetailsBound) {
+      return;
+    }
+    floatingDetailsBound = true;
+
+    document.addEventListener("toggle", function (event) {
+      var details = event.target;
+      if (!(details instanceof HTMLDetailsElement) || !details.matches(".syncfusion-grid-host .row-detail")) {
+        return;
+      }
+      if (details.open) {
+        var host = details.closest(".syncfusion-grid-host");
+        if (host) {
+          Array.prototype.slice.call(host.querySelectorAll(".row-detail[open]")).forEach(function (other) {
+            if (other !== details) {
+              other.open = false;
+              clearFloatingDetail(other);
+            }
+          });
+        }
+        positionFloatingDetail(details);
+        return;
+      }
+      clearFloatingDetail(details);
+    }, true);
+
+    ["resize", "scroll"].forEach(function (eventName) {
+      window.addEventListener(eventName, function () {
+        Array.prototype.slice.call(document.querySelectorAll(".syncfusion-grid-host .row-detail[open]")).forEach(positionFloatingDetail);
+      }, { passive: true });
+    });
+  }
+
+  function datasetInt(element, name, fallback) {
+    var parsed = parseInt(element.dataset[name] || "", 10);
+    return Number.isNaN(parsed) ? fallback : parsed;
+  }
+
+  function formatRefreshSeconds(seconds) {
+    if (seconds >= 3600 && seconds % 3600 === 0) {
+      return (seconds / 3600) + "h";
+    }
+    if (seconds >= 60 && seconds % 60 === 0) {
+      return (seconds / 60) + "m";
+    }
+    return seconds + "s";
+  }
+
+  function enhanceLiveAutoRefresh() {
+    Array.prototype.slice.call(document.querySelectorAll("[data-live-auto-refresh]")).forEach(function (control) {
+      if (control.dataset.autoRefreshReady === "true") {
+        return;
+      }
+      control.dataset.autoRefreshReady = "true";
+
+      var toggle = control.querySelector("[data-auto-refresh-toggle]");
+      var secondsInput = control.querySelector("[data-auto-refresh-seconds]");
+      var status = control.querySelector("[data-auto-refresh-status]");
+      if (!toggle || !secondsInput) {
+        return;
+      }
+
+      var minSeconds = Math.max(5, datasetInt(control, "minSeconds", 15));
+      var maxSeconds = Math.max(minSeconds, datasetInt(control, "maxSeconds", 3600));
+      var defaultSeconds = Math.min(maxSeconds, Math.max(minSeconds, datasetInt(control, "defaultSeconds", 60)));
+      var enabledKey = "fdre:live:auto-refresh:enabled";
+      var secondsKey = "fdre:live:auto-refresh:seconds";
+      var timer = 0;
+
+      function clampSeconds(value, fallback) {
+        var parsed = parseInt(value, 10);
+        if (Number.isNaN(parsed)) {
+          return fallback;
+        }
+        return Math.min(maxSeconds, Math.max(minSeconds, parsed));
+      }
+
+      function currentSeconds(normalize) {
+        if (!String(secondsInput.value || "").trim()) {
+          return null;
+        }
+        var seconds = clampSeconds(secondsInput.value, defaultSeconds);
+        if (normalize) {
+          secondsInput.value = String(seconds);
+        }
+        return seconds;
+      }
+
+      function setStatus(text) {
+        if (status) {
+          status.textContent = text;
+        }
+      }
+
+      function persist() {
+        try {
+          window.localStorage.setItem(enabledKey, toggle.checked ? "true" : "false");
+          var seconds = currentSeconds(false);
+          if (seconds !== null) {
+            window.localStorage.setItem(secondsKey, String(seconds));
+          }
+        } catch (_error) {
+          // Auto-refresh preferences are local convenience state only.
+        }
+      }
+
+      function schedule() {
+        window.clearTimeout(timer);
+        control.classList.toggle("is-enabled", toggle.checked);
+        if (!toggle.checked) {
+          var savedSeconds = currentSeconds(false) || defaultSeconds;
+          setStatus("Off · " + formatRefreshSeconds(savedSeconds));
+          return;
+        }
+        var seconds = currentSeconds(false);
+        if (seconds === null) {
+          setStatus("Set frequency");
+          return;
+        }
+        setStatus("On · " + formatRefreshSeconds(seconds));
+        timer = window.setTimeout(function () {
+          if (document.hidden) {
+            schedule();
+            return;
+          }
+          window.location.reload();
+        }, seconds * 1000);
+      }
+
+      try {
+        var savedSeconds = window.localStorage.getItem(secondsKey);
+        var savedEnabled = window.localStorage.getItem(enabledKey);
+        secondsInput.value = String(savedSeconds ? clampSeconds(savedSeconds, defaultSeconds) : defaultSeconds);
+        toggle.checked = savedEnabled === "true";
+      } catch (_error) {
+        secondsInput.value = String(defaultSeconds);
+      }
+
+      secondsInput.min = String(minSeconds);
+      secondsInput.max = String(maxSeconds);
+      secondsInput.title = "Allowed range: " + minSeconds + "-" + maxSeconds + " seconds";
+
+      toggle.addEventListener("change", function () {
+        persist();
+        schedule();
+      });
+      secondsInput.addEventListener("input", function () {
+        persist();
+        schedule();
+      });
+      ["change", "blur"].forEach(function (eventName) {
+        secondsInput.addEventListener(eventName, function () {
+          currentSeconds(true);
+          persist();
+          schedule();
+        });
+      });
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) {
+          schedule();
+        }
+      });
+      schedule();
+    });
+  }
+
   onReady(function () {
     enhanceCollapsibles();
     enhanceDateRangeEditors();
+    enhanceFloatingDetails();
+    enhanceLiveAutoRefresh();
   });
 }());

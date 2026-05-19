@@ -8,15 +8,15 @@
   {% if syncfusion_license_key %}
     <link rel="stylesheet" href="https://cdn.syncfusion.com/ej2/33.2.3/bootstrap5.3.css">
   {% endif %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=20260519-auto-refresh3">
   {% if syncfusion_license_key %}
     <script>
       window.FDRE_SYNCFUSION_LICENSE_KEY = {{ syncfusion_license_key | tojson }};
     </script>
     <script src="https://cdn.syncfusion.com/ej2/33.2.3/dist/ej2.min.js" defer></script>
-    <script src="{{ url_for('static', filename='syncfusion-tables.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='syncfusion-tables.js') }}?v=20260519-auto-refresh3" defer></script>
   {% endif %}
-  <script src="{{ url_for('static', filename='app-ui.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='app-ui.js') }}?v=20260519-auto-refresh3" defer></script>
   {% block head_extra %}{% endblock %}
 </head>
 <body class="page-{{ active_page or 'default' }}">
@@ -32,7 +32,7 @@
       <a href="{{ url_for('portfolio_page') }}" class="{% if active_page == 'portfolio' %}active{% endif %}">{{ icons.icon("briefcase") }}<span>Portfolio</span></a>
       <a href="{{ url_for('live_board') }}" class="{% if active_page == 'live' %}active{% endif %}">{{ icons.icon("activity") }}<span>Live Board</span></a>
       <a href="{{ url_for('inputs_page') }}" class="{% if active_page == 'inputs' %}active{% endif %}">{{ icons.icon("database") }}<span>Inputs</span></a>
-      {% if can_view_model_admin %}
+      {% if is_admin %}
         <a href="{{ url_for('rules_page') }}" class="{% if active_page == 'rules' %}active{% endif %}">{{ icons.icon("sliders") }}<span>Rules</span></a>
       {% endif %}
       <details name="topbar-menu" class="nav-menu {% if active_page in ['feeds', 'history', 'assumptions', 'users'] %}active{% endif %}">
@@ -40,8 +40,8 @@
         <div class="nav-menu-panel">
           <a href="{{ url_for('feeds_page') }}" class="{% if active_page == 'feeds' %}active{% endif %}">{{ icons.icon("rss") }}<span>Feeds</span></a>
           <a href="{{ url_for('history_page') }}" class="{% if active_page == 'history' %}active{% endif %}">{{ icons.icon("history") }}<span>History</span></a>
-          {% if can_view_model_admin %}
-            <a href="{{ url_for('assumptions_page') }}" class="{% if active_page == 'assumptions' %}active{% endif %}">{{ icons.icon("settings") }}<span>Assumptions</span></a>
+          {% if is_admin %}
+            <a href="{{ url_for('assumptions_page') }}" class="{% if active_page == 'assumptions' %}active{% endif %}">{{ icons.icon("settings") }}<span>Config</span></a>
           {% endif %}
           {% if is_admin %}
             <a href="{{ url_for('users_page') }}" class="{% if active_page == 'users' %}active{% endif %}">{{ icons.icon("users") }}<span>Users</span></a>

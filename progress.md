@@ -53,6 +53,19 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - [x] 13. Restore client-safe Live Board exports.
   - Show Export on the client Live Board.
   - Keep links routed through sanitized CSV/XLSX artifact responses for non-internal users.
+- [x] 14. Restore admin Rules and Config showcase access.
+  - Show Rules and Config navigation to admin users, including Auth0 client admins.
+  - Keep operators blocked from Rules/Config routes.
+  - Make rule selection/deselection more explicit with switch controls before save/recalculate.
+- [x] 15. Fix grid detail-card alignment.
+  - Replace inline Rules detail expansion with a viewport-clamped card.
+  - Apply the same floating-card positioning to grid row details to prevent horizontal overflow or clipped panels.
+  - Cache-bust shared CSS/JS assets so browsers pick up the corrected detail behavior.
+- [x] 16. Add configurable Live Board auto-refresh.
+  - Replace the hardcoded browser refresh with a compact status menu beside Recalculate.
+  - Show clear on/off state in the header and keep frequency editing inside the menu.
+  - Show the default refresh frequency and let users enter a bounded seconds value.
+  - Persist the toggle/frequency locally so each operator can control refresh behavior.
 
 ## Client-Facing IP Reduction Backlog
 
@@ -186,3 +199,6 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-19: Completed client-facing IP reduction item 6 by reducing client Users to access activation/deactivation, hiding Auth0 directory implementation details, connection/environment-admin metadata, source/update/audit columns, and last-login style fields outside internal mode.
 - 2026-05-19: Completed client-facing IP reduction item 7 by reducing client Feeds to integration-readiness status and keeping protocol, cadence, fallback, owner, connector-roadmap, and feed-edit controls internal-only.
 - 2026-05-19: Completed client-facing IP reduction item 8 by blocking non-internal raw input downloads, reducing public allocation exports to client-visible columns, blocking model/input-version JSON artifacts, and limiting public workbook summaries to data-quality, risk-level, and action signals.
+- 2026-05-19: Restored Rules and Config navigation for admin users and made rule selection/deselection explicit with admin-facing switches.
+- 2026-05-19: Fixed Rules detail-card overflow and added viewport-clamped positioning for grid row detail cards; desktop and mobile overflow checks passed across main pages.
+- 2026-05-19: Added a configurable Live Board auto-refresh menu with default/min/max seconds rendered from environment-backed settings.
