@@ -25,7 +25,7 @@
   <div class="summary-tile">
     <span>{{ icons.icon("alert-triangle") }}<span>Review state</span></span>
     <strong>Open</strong>
-    <small>Acknowledgement status is tracked per cycle</small>
+    <small>Review status is tracked per cycle</small>
   </div>
 </section>
 
@@ -35,9 +35,9 @@
       <h2>{{ "Decision Cycles" if can_view_model_admin else "Decision Reports" }}</h2>
       <p class="muted">
         {% if can_view_model_admin %}
-          Audit-ready run history with model version and acknowledgement context.
+          Audit-ready run history with model version and review context.
         {% else %}
-          Business review history with acknowledgement state and operating risk summary.
+          Business review history with review state and operating risk summary.
         {% endif %}
       </p>
     </div>
@@ -45,13 +45,13 @@
   <div class="table-shell">
     <table data-syncfusion-grid="decision-history" data-grid-height="620" data-grid-page-size="25">
       {% if can_view_model_admin %}
-        <thead><tr><th>Cycle</th><th>Created</th><th>Window</th><th>Acknowledgement</th><th>Shortfall</th><th>Details</th></tr></thead>
+        <thead><tr><th>Cycle</th><th>Created</th><th>Window</th><th>Review Status</th><th>Shortfall</th><th>Details</th></tr></thead>
       {% else %}
         <thead>
           <tr>
             <th data-grid-width="140">Report Date</th>
             <th data-grid-width="130">Status</th>
-            <th data-grid-width="170">Acknowledgement</th>
+            <th data-grid-width="170">Review Status</th>
             <th data-grid-width="145">Risk Band</th>
             <th data-grid-width="300">Business Summary</th>
             <th data-grid-width="280">Details</th>
@@ -86,7 +86,7 @@
               <td>{{ cycle.window_start }} to {{ cycle.window_end }}</td>
               <td>
                 {% if acknowledgement %}
-                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>ack</span></span>
+                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>reviewed</span></span>
                   <span class="muted">{{ acknowledgement.user_email }}</span>
                 {% else %}
                   <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>open</span></span>
@@ -116,7 +116,7 @@
               </td>
               <td>
                 {% if acknowledgement %}
-                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>Acknowledged</span></span>
+                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>Reviewed</span></span>
                 {% else %}
                   <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>Open</span></span>
                 {% endif %}
@@ -146,8 +146,8 @@
                         <span>{{ risk_label }}</span>
                       </span>
                       <span>
-                        <strong>Acknowledgement</strong>
-                        <span>{{ "Acknowledged" if acknowledgement else "Open" }}</span>
+                        <strong>Review status</strong>
+                        <span>{{ "Reviewed" if acknowledgement else "Open" }}</span>
                       </span>
                       <span>
                         <strong>Follow-up</strong>

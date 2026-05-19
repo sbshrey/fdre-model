@@ -882,9 +882,9 @@ def create_app(
                 user_email=current_user_email(),
                 note=request.form.get("note", ""),
             )
-            flash("Decision cycle acknowledged.", "success")
+            flash("Advisory window marked reviewed.", "success")
         except Exception as exc:
-            flash(f"Acknowledgement failed: {exc}", "error")
+            flash(f"Review failed: {exc}", "error")
         return redirect(url_for("live_board"))
 
     @app.post("/cycles/current/acknowledge")
@@ -909,10 +909,10 @@ def create_app(
                 user_email=current_user_email(),
                 note=request.form.get("note", ""),
             )
-            flash("Decision cycle acknowledged.", "success")
+            flash("Advisory window marked reviewed.", "success")
             return redirect(url_for("live_board", **_live_window_query(live_window)))
         except Exception as exc:
-            flash(f"Acknowledgement failed: {exc}", "error")
+            flash(f"Review failed: {exc}", "error")
             return redirect(url_for("live_board"))
 
     @app.get("/favicon.ico")

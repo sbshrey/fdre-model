@@ -95,6 +95,12 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assert b"More" in live.data
     assert b"Current operating mix" in live.data
     assert b"default 6 actual + 1 live + 24 forecast = 31" not in live.data
+    assert b"Review Status" in live.data
+    assert b"Needs Review" in live.data
+    assert b"Confirms this advisory window has been reviewed by the operator." in live.data
+    assert b"Mark Reviewed" in live.data
+    assert b"Operator State" not in live.data
+    assert b"Acknowledgement" not in live.data
     assert b"Auto-refresh" in live.data
     assert b"Off \xc2\xb7 60s" in live.data
     assert b"Default 60s" in live.data
@@ -466,11 +472,11 @@ def test_live_board_filters_and_acknowledgement_flow(tmp_path: Path) -> None:
         follow_redirects=True,
     )
     assert acknowledged.status_code == 200
-    assert b"Decision cycle acknowledged" in acknowledged.data
-    assert b"Acknowledged by operator@example.com" in acknowledged.data
+    assert b"Advisory window marked reviewed" in acknowledged.data
+    assert b"Reviewed by operator@example.com" in acknowledged.data
 
     history = client.get("/history", headers=headers)
-    assert b"Acknowledged" in history.data
+    assert b"Reviewed" in history.data
     assert b'<span class="muted">operator@example.com' not in history.data
 
 

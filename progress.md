@@ -66,6 +66,10 @@ This file tracks the known gaps between the current MVP and the expected live-re
   - Show clear on/off state in the header and keep frequency editing inside the menu.
   - Show the default refresh frequency and let users enter a bounded seconds value.
   - Persist the toggle/frequency locally so each operator can control refresh behavior.
+- [x] 17. Clarify Live Board review status.
+  - Rename the operator acknowledgement card to Review Status.
+  - Use Mark Reviewed as the operator action with explanatory helper text.
+  - Show Reviewed by user and timestamp after the advisory window is reviewed.
 
 ## Client-Facing IP Reduction Backlog
 
@@ -194,7 +198,7 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-19: Started client-facing IP reduction backlog and completed item 1 with internal-only model admin access for Rules/Assumptions and raw model artifacts.
 - 2026-05-19: Completed client-facing IP reduction item 2 by redacting Live Board cycle/workspace IDs, model versions, export links, formulas, source internals, hidden technical columns, rule paths, and technical audit from non-internal views while preserving internal diagnostics.
 - 2026-05-19: Completed client-facing IP reduction item 3 by simplifying Inputs to readiness/update flows for clients and gating active version IDs, schema/header lists, raw downloads, row counts, source-type labels, and version history to internal model admins.
-- 2026-05-19: Completed client-facing IP reduction item 4 by converting client History into report-date, acknowledgement, shortfall-band, and business-summary views while keeping cycle IDs, exact windows, workspace codes, model versions, row counts, and user acknowledgement emails internal.
+- 2026-05-19: Completed client-facing IP reduction item 4 by converting client History into report-date, review-status, shortfall-band, and business-summary views while keeping cycle IDs, exact windows, workspace codes, model versions, row counts, and reviewer emails internal.
 - 2026-05-19: Completed client-facing IP reduction item 5 by replacing Portfolio exact shortfall/project detail exposure with risk level, readiness, last reviewed, and open-action signals for clients, while hiding raw project IDs, offtaker, contract, and capacity detail outside internal mode.
 - 2026-05-19: Completed client-facing IP reduction item 6 by reducing client Users to access activation/deactivation, hiding Auth0 directory implementation details, connection/environment-admin metadata, source/update/audit columns, and last-login style fields outside internal mode.
 - 2026-05-19: Completed client-facing IP reduction item 7 by reducing client Feeds to integration-readiness status and keeping protocol, cadence, fallback, owner, connector-roadmap, and feed-edit controls internal-only.
@@ -202,3 +206,4 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-19: Restored Rules and Config navigation for admin users and made rule selection/deselection explicit with admin-facing switches.
 - 2026-05-19: Fixed Rules detail-card overflow and added viewport-clamped positioning for grid row detail cards; desktop and mobile overflow checks passed across main pages.
 - 2026-05-19: Added a configurable Live Board auto-refresh menu with default/min/max seconds rendered from environment-backed settings.
+- 2026-05-19: Renamed the Live Board acknowledgement workflow to Review Status with clearer Mark Reviewed action text and reviewed-by confirmation copy.

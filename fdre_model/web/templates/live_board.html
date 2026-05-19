@@ -112,7 +112,7 @@
       <button type="submit">{{ icons.icon("refresh-cw") }}<span>Recalculate</span></button>
     </form>
     {% if acknowledgement %}
-      <span class="pill ok">{{ icons.icon("check-circle") }}<span>Acknowledged</span></span>
+      <span class="pill ok">{{ icons.icon("check-circle") }}<span>Reviewed</span></span>
     {% endif %}
     <details class="action-menu">
       <summary class="button ghost">{{ icons.icon("download") }}<span>Export</span></summary>
@@ -247,21 +247,22 @@
   <div class="panel live-ack-card">
     <div class="panel-head">
       <div>
-        <p class="eyebrow">Operator State</p>
-        <h2>Acknowledgement</h2>
+        <p class="eyebrow">Review Status</p>
+        <h2>{{ "Reviewed" if acknowledgement else "Needs Review" }}</h2>
+        <p class="muted review-status-helper">Confirms this advisory window has been reviewed by the operator.</p>
       </div>
     </div>
     {% if acknowledgement %}
       <div class="acknowledged-state">
-        <span class="pill ok">{{ icons.icon("check-circle") }}<span>Acknowledged</span></span>
-        <p class="muted">Acknowledged by {{ acknowledgement.user_email }} at {{ acknowledgement.acknowledged_at }}</p>
+        <span class="pill ok">{{ icons.icon("check-circle") }}<span>Reviewed</span></span>
+        <p class="muted">Reviewed by {{ acknowledgement.user_email }} at {{ acknowledgement.acknowledged_at }}</p>
       </div>
       {% if acknowledgement.note %}
-        <p>{{ acknowledgement.note }}</p>
+        <p class="review-note">{{ acknowledgement.note }}</p>
       {% endif %}
     {% else %}
       <details class="ack-drawer">
-        <summary class="button">{{ icons.icon("check-circle") }}<span>Acknowledge</span></summary>
+        <summary class="button">{{ icons.icon("check-circle") }}<span>Mark Reviewed</span></summary>
         <form method="post" action="{{ url_for('acknowledge_cycle', cycle_id=cycle.cycle_id) if can_view_model_admin else url_for('acknowledge_current_cycle') }}" class="ack-form">
           <input type="hidden" name="preset" value="{{ window.mode }}">
           {% if window.mode == "custom" %}
@@ -269,8 +270,8 @@
             <input type="hidden" name="system_live_at" value="{{ window.live_at }}">
             <input type="hidden" name="window_end" value="{{ window.end }}">
           {% endif %}
-          <textarea name="note" rows="2" placeholder="Optional note"></textarea>
-          <button type="submit">{{ icons.icon("check-circle") }}<span>Confirm Acknowledgement</span></button>
+          <textarea name="note" rows="2" placeholder="Optional review note"></textarea>
+          <button type="submit">{{ icons.icon("check-circle") }}<span>Mark Reviewed</span></button>
         </form>
       </details>
     {% endif %}

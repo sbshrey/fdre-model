@@ -8,15 +8,15 @@
   {% if syncfusion_license_key %}
     <link rel="stylesheet" href="https://cdn.syncfusion.com/ej2/33.2.3/bootstrap5.3.css">
   {% endif %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=20260519-auto-refresh3">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v=20260519-review-status">
   {% if syncfusion_license_key %}
     <script>
       window.FDRE_SYNCFUSION_LICENSE_KEY = {{ syncfusion_license_key | tojson }};
     </script>
     <script src="https://cdn.syncfusion.com/ej2/33.2.3/dist/ej2.min.js" defer></script>
-    <script src="{{ url_for('static', filename='syncfusion-tables.js') }}?v=20260519-auto-refresh3" defer></script>
+    <script src="{{ url_for('static', filename='syncfusion-tables.js') }}?v=20260519-review-status" defer></script>
   {% endif %}
-  <script src="{{ url_for('static', filename='app-ui.js') }}?v=20260519-auto-refresh3" defer></script>
+  <script src="{{ url_for('static', filename='app-ui.js') }}?v=20260519-review-status" defer></script>
   {% block head_extra %}{% endblock %}
 </head>
 <body class="page-{{ active_page or 'default' }}">

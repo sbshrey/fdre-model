@@ -1265,6 +1265,10 @@ button.ghost {
   margin-bottom: 12px;
 }
 
+.review-status-helper {
+  margin: 6px 0 0;
+}
+
 .alert-list {
   display: grid;
   gap: 8px;
@@ -1332,6 +1336,16 @@ button.ghost {
 
 .acknowledged-state p {
   margin: 0;
+}
+
+.review-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  font-weight: 650;
 }
 
 .section-head {
