@@ -1,33 +1,171 @@
 {% extends "base.html" %}
+{% import "components/icons.html" as icons %}
 {% block title %}History | FDRE Market Operations{% endblock %}
 {% block content %}
-<section class="page-header"><div><p class="eyebrow">Decision History</p><h1>Cycles</h1></div></section>
-<section class="table-shell">
-  <table data-syncfusion-grid="decision-history" data-grid-height="620" data-grid-page-size="25">
-    <thead><tr><th>Cycle</th><th>Created</th><th>Workspace</th><th>Window</th><th>Acknowledgement</th><th>Assumptions</th><th>Rules</th><th>Rows</th><th>Peak MWh</th><th>Shortfall</th></tr></thead>
-    <tbody>
-      {% for cycle in cycles %}
-        <tr>
-          <td><a href="{{ url_for('cycle_page', cycle_id=cycle.cycle_id) }}">{{ cycle.cycle_id }}</a></td>
-          <td>{{ cycle.created_at }}</td>
-          <td class="mono">{{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</td>
-          <td>{{ cycle.window_start }} to {{ cycle.window_end }}</td>
-          <td>
-            {% if acknowledgements.get(cycle.cycle_id) %}
-              <span class="pill ok">ack</span>
-              <span class="muted">{{ acknowledgements.get(cycle.cycle_id).user_email }}</span>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Decision History</p>
+    <h1>{{ "Cycles" if can_view_model_admin else "Decision Reports" }}</h1>
+    <p class="muted">Showing {{ date_context.label }}</p>
+  </div>
+  <div class="header-meta-strip">
+    <span>{{ icons.icon("clock") }}<strong>Range</strong>{{ date_context.preset | replace("_", " ") | title }}</span>
+    {% if can_view_model_admin %}
+      <span>{{ icons.icon("folder") }}<strong>Workspace</strong>{{ current_user.scope.customer_id }}/{{ current_user.scope.workspace_id }}</span>
+    {% endif %}
+  </div>
+</section>
+
+<section class="summary-grid history-summary-grid minimal-summary-grid">
+  <div class="summary-tile">
+    <span>{{ icons.icon("history") }}<span>{{ "Cycles" if can_view_model_admin else "Reports" }}</span></span>
+    <strong>{{ cycles|length }}</strong>
+    <small>Matching the selected range</small>
+  </div>
+  <div class="summary-tile">
+    <span>{{ icons.icon("alert-triangle") }}<span>Review state</span></span>
+    <strong>Open</strong>
+    <small>Acknowledgement status is tracked per cycle</small>
+  </div>
+</section>
+
+<section class="panel table-panel history-panel">
+  <div class="panel-head">
+    <div>
+      <h2>{{ "Decision Cycles" if can_view_model_admin else "Decision Reports" }}</h2>
+      <p class="muted">
+        {% if can_view_model_admin %}
+          Audit-ready run history with model version and acknowledgement context.
+        {% else %}
+          Business review history with acknowledgement state and operating risk summary.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table data-syncfusion-grid="decision-history" data-grid-height="620" data-grid-page-size="25">
+      {% if can_view_model_admin %}
+        <thead><tr><th>Cycle</th><th>Created</th><th>Window</th><th>Acknowledgement</th><th>Shortfall</th><th>Details</th></tr></thead>
+      {% else %}
+        <thead>
+          <tr>
+            <th data-grid-width="140">Report Date</th>
+            <th data-grid-width="130">Status</th>
+            <th data-grid-width="170">Acknowledgement</th>
+            <th data-grid-width="145">Risk Band</th>
+            <th data-grid-width="300">Business Summary</th>
+            <th data-grid-width="280">Details</th>
+          </tr>
+        </thead>
+      {% endif %}
+      <tbody>
+        {% for cycle in cycles %}
+          {% set acknowledgement = acknowledgements.get(cycle.cycle_id) %}
+          {% set shortfall = cycle.summary.shortfall_mwh|float %}
+          {% if shortfall <= 0 %}
+            {% set risk_label = "None" %}
+            {% set summary_text = "No shortfall recorded. No immediate action." %}
+            {% set follow_up = "No immediate action" %}
+          {% elif shortfall < 100 %}
+            {% set risk_label = "Low" %}
+            {% set summary_text = "Low operating risk. Review when convenient." %}
+            {% set follow_up = "Routine review" %}
+          {% elif shortfall < 500 %}
+            {% set risk_label = "Moderate" %}
+            {% set summary_text = "Moderate operating risk. Review recommended action." %}
+            {% set follow_up = "Review recommended action" %}
+          {% else %}
+            {% set risk_label = "High" %}
+            {% set summary_text = "High operating risk. Review recommended action." %}
+            {% set follow_up = "Review recommended action" %}
+          {% endif %}
+          <tr>
+            {% if can_view_model_admin %}
+              <td><a href="{{ url_for('cycle_page', cycle_id=cycle.cycle_id) }}">{{ cycle.cycle_id }}</a></td>
+              <td>{{ cycle.created_at }}</td>
+              <td>{{ cycle.window_start }} to {{ cycle.window_end }}</td>
+              <td>
+                {% if acknowledgement %}
+                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>ack</span></span>
+                  <span class="muted">{{ acknowledgement.user_email }}</span>
+                {% else %}
+                  <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>open</span></span>
+                {% endif %}
+              </td>
+              <td>{{ "%.1f"|format(shortfall) }}</td>
+              <td>
+                <details class="row-detail">
+                  <summary>{{ icons.icon("history") }}<span>Cycle details</span></summary>
+                  <div class="row-detail-grid">
+                    <span><strong>Workspace</strong><code>{{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</code></span>
+                    <span><strong>Assumptions</strong><code>{{ cycle.model_versions.assumptions or "unversioned" }}</code></span>
+                    <span><strong>Rules</strong><code>{{ cycle.model_versions.rules or "unversioned" }}</code></span>
+                    <span><strong>Rows</strong><code>{{ cycle.summary.rows }}</code></span>
+                    <span><strong>Peak MWh</strong><code>{{ "%.1f"|format(cycle.summary.peak_power_sale_mwh or 0) }}</code></span>
+                  </div>
+                </details>
+              </td>
             {% else %}
-              <span class="pill warning">open</span>
+              <td>{{ cycle.created_at[:10] }}</td>
+              <td>
+                {% if shortfall > 0 %}
+                  <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>Review</span></span>
+                {% else %}
+                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>Clear</span></span>
+                {% endif %}
+              </td>
+              <td>
+                {% if acknowledgement %}
+                  <span class="pill ok">{{ icons.icon("check-circle") }}<span>Acknowledged</span></span>
+                {% else %}
+                  <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>Open</span></span>
+                {% endif %}
+              </td>
+              <td>
+                {{ risk_label }}
+              </td>
+              <td><span class="history-summary-text">{{ summary_text }}</span></td>
+              <td>
+                <details class="row-detail history-business-detail">
+                  <summary>{{ icons.icon("history") }}<span>Business summary</span></summary>
+                  <div class="history-business-card">
+                    <div class="history-business-card-head">
+                      <span class="pill {{ 'warning' if shortfall > 0 else 'ok' }}">
+                        {{ icons.icon("alert-triangle" if shortfall > 0 else "check-circle") }}
+                        <span>{{ "Review needed" if shortfall > 0 else "Clear" }}</span>
+                      </span>
+                      <strong>{{ summary_text }}</strong>
+                    </div>
+                    <div class="history-business-facts">
+                      <span>
+                        <strong>Report date</strong>
+                        <span>{{ cycle.created_at[:10] }}</span>
+                      </span>
+                      <span>
+                        <strong>Risk band</strong>
+                        <span>{{ risk_label }}</span>
+                      </span>
+                      <span>
+                        <strong>Acknowledgement</strong>
+                        <span>{{ "Acknowledged" if acknowledgement else "Open" }}</span>
+                      </span>
+                      <span>
+                        <strong>Follow-up</strong>
+                        <span>{{ follow_up }}</span>
+                      </span>
+                      <span class="wide">
+                        <strong>Selected range</strong>
+                        <span>{{ date_context.label }}</span>
+                      </span>
+                    </div>
+                  </div>
+                </details>
+              </td>
             {% endif %}
-          </td>
-          <td class="mono">{{ cycle.model_versions.assumptions or "unversioned" }}</td>
-          <td class="mono">{{ cycle.model_versions.rules or "unversioned" }}</td>
-          <td>{{ cycle.summary.rows }}</td>
-          <td>{{ "%.1f"|format(cycle.summary.peak_power_sale_mwh or 0) }}</td>
-          <td>{{ "%.1f"|format(cycle.summary.shortfall_mwh or 0) }}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}

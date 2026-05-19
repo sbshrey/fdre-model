@@ -1,30 +1,32 @@
 {% extends "base.html" %}
+{% import "components/collapsible.html" as ui %}
+{% import "components/icons.html" as icons %}
 {% block title %}Inputs | FDRE Market Operations{% endblock %}
 {% block content %}
 <section class="page-header">
   <div>
-    <p class="eyebrow">Versioned Inputs</p>
+    <p class="eyebrow">{{ "Versioned Inputs" if can_view_model_admin else "Input Readiness" }}</p>
     <h1>Input Sources</h1>
-    <p class="muted">Manage the active operating data without mutating previous uploads. Every change creates a new auditable version.</p>
+    <p class="muted">
+      {% if can_view_model_admin %}
+        Manage the active operating data without mutating previous uploads. Every change creates a new auditable version.
+      {% else %}
+        Review source readiness and update operational inputs only when coverage needs attention.
+      {% endif %}
+    </p>
   </div>
 </section>
 
-<section class="input-summary-grid">
+<section class="input-summary-grid minimal-summary-grid">
   <div>
+    <span class="summary-icon">{{ icons.icon("database") }}</span>
     <strong>{{ input_summary.active_count }}</strong>
     <span>Active sources</span>
   </div>
   <div>
-    <strong>{{ input_summary.ok_count }}</strong>
-    <span>Validated sources</span>
-  </div>
-  <div>
+    <span class="summary-icon">{{ icons.icon("pencil") }}</span>
     <strong>{{ input_summary.override_count }}</strong>
     <span>Operator overrides</span>
-  </div>
-  <div>
-    <strong>{{ input_summary.version_count }}</strong>
-    <span>Total versions</span>
   </div>
 </section>
 
@@ -33,101 +35,136 @@
     <article class="panel input-source-panel">
       <div class="panel-head">
         <div class="source-title">
-          <span class="source-index">{{ loop.index }}</span>
+          <span class="source-index">{{ icons.icon("database") }}<span class="sr-only">Source {{ loop.index }}</span></span>
           <div>
-            <p class="eyebrow">Source Data</p>
+            <p class="eyebrow">{{ "Source Data" if can_view_model_admin else "Operating Input" }}</p>
             <h2>{{ item.spec.label }}</h2>
-            <p class="muted">{{ item.spec.description }}</p>
           </div>
         </div>
         {% if item.active %}
           <div class="source-actions">
-            <span class="pill ok">Active</span>
-            {% if item.active.source_type[:4] == "seed" %}
-              <span class="pill">Reference</span>
-            {% else %}
-              <span class="pill warning">Override</span>
+            <span class="pill ok">{{ icons.icon("check-circle") }}<span>Active</span></span>
+            {% if can_view_model_admin %}
+              {% if item.active.source_type[:4] == "seed" %}
+                <span class="pill">{{ icons.icon("file-text") }}<span>Reference</span></span>
+              {% else %}
+                <span class="pill warning">{{ icons.icon("pencil") }}<span>Override</span></span>
+              {% endif %}
             {% endif %}
-            <a class="button ghost" href="{{ url_for('edit_input', dataset_key=item.spec.key) }}">Edit Active</a>
-            <a class="button ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=item.active.version_id) }}">Download Active CSV</a>
+            <a class="button ghost" href="{{ url_for('edit_input', dataset_key=item.spec.key) }}">{{ icons.icon("pencil") }}<span>{{ "Edit Active" if can_view_model_admin else "Update" }}</span></a>
+          </div>
+        {% else %}
+          <div class="source-actions">
+            <span class="pill critical">{{ icons.icon("alert-triangle") }}<span>Missing</span></span>
           </div>
         {% endif %}
       </div>
 
-      <div class="input-status-strip">
-        <div>
-          <strong>Active version</strong>
-          <span class="mono">{{ item.active.version_id if item.active else "missing" }}</span>
-        </div>
-        <div>
-          <strong>Coverage</strong>
-          <span>{{ item.active.coverage_start if item.active else "-" }} to {{ item.active.coverage_end if item.active else "-" }}</span>
-        </div>
-        <div>
-          <strong>Rows</strong>
-          <span>{{ item.active.row_count if item.active else "0" }}</span>
-        </div>
-        <div>
-          <strong>Source</strong>
-          <span>{{ item.active.source_type if item.active else "-" }}</span>
-        </div>
-        <div>
-          <strong>Headers</strong>
-          <span>{{ item.spec.expected_headers | join(", ") }}</span>
-        </div>
-      </div>
-
-      <div class="input-actions-grid">
-        <form method="post" action="{{ url_for('upload_input', dataset_key=item.spec.key) }}" enctype="multipart/form-data" class="input-action-box">
-          <h2>{{ item.spec.label }}</h2>
-          <p class="muted">Upload a validated CSV file and make it active immediately.</p>
-          <input type="file" name="file" accept=".csv,text/csv">
-          <button type="submit">Upload</button>
-        </form>
-        <form method="post" action="{{ url_for('manual_input', dataset_key=item.spec.key) }}" class="input-action-box">
-          <h2>Paste Complete CSV</h2>
-          <p class="muted">Use for one-off replacement data. Window edits are better for small corrections.</p>
-          <input type="hidden" name="source_type" value="manual">
-          <textarea name="csv_text" rows="4" placeholder="{{ item.spec.expected_headers | join(',') }}"></textarea>
-          <button type="submit">Save Manual Version</button>
-        </form>
-      </div>
-
-      {% if item.versions %}
-        <div class="version-history-head">
-          <div>
-            <h2>Version History</h2>
-            <p class="muted">Latest five versions. Older files remain stored and can be reactivated from this table.</p>
+      <details class="source-details">
+        <summary>{{ icons.icon("history") }}<span>{{ "Version details" if can_view_model_admin else "Readiness details" }}</span></summary>
+        {% if can_view_model_admin %}
+          <div class="input-status-strip">
+            <div>
+              <strong>Active version</strong>
+              <span class="mono">{{ item.active.version_id if item.active else "missing" }}</span>
+            </div>
+            <div>
+              <strong>Coverage</strong>
+              <span>{{ item.active.coverage_start if item.active else "-" }} to {{ item.active.coverage_end if item.active else "-" }}</span>
+            </div>
+            <div>
+              <strong>Rows</strong>
+              <span>{{ item.active.row_count if item.active else "0" }}</span>
+            </div>
+            <div>
+              <strong>Source</strong>
+              <span>{{ item.active.source_type if item.active else "-" }}</span>
+            </div>
           </div>
-          <span class="pill">{{ item.versions|length }} versions</span>
+        {% else %}
+          <div class="input-status-strip">
+            <div>
+              <strong>Coverage</strong>
+              <span>{{ item.active.coverage_start if item.active else "-" }} to {{ item.active.coverage_end if item.active else "-" }}</span>
+            </div>
+            <div>
+              <strong>Readiness</strong>
+              <span>{{ "Ready for operations" if item.active else "Needs input" }}</span>
+            </div>
+            <div>
+              <strong>Next step</strong>
+              <span>{{ "Update only when coverage changes" if item.active else "Upload source data" }}</span>
+            </div>
+          </div>
+        {% endif %}
+      </details>
+
+      {% call ui.section("input-" ~ item.spec.key ~ "-manage", "Manage " ~ item.spec.label if can_view_model_admin else "Update " ~ item.spec.label, "Source Actions" if can_view_model_admin else "Guided Update", "Upload, paste, schema, and version history." if can_view_model_admin else "Upload or paste a replacement only after the source has been checked.", item.versions|length ~ " versions" if can_view_model_admin else "guided", icon_name="sliders") %}
+        {% if can_view_model_admin %}
+          <div class="schema-strip">
+            <strong>Expected CSV</strong>
+            <span class="mono">{{ item.spec.expected_headers | join(", ") }}</span>
+          </div>
+        {% endif %}
+        <div class="input-actions-grid">
+          <form method="post" action="{{ url_for('upload_input', dataset_key=item.spec.key) }}" enctype="multipart/form-data" class="input-action-box">
+            <h2>{{ icons.icon("upload") }}<span>Upload CSV</span></h2>
+            <p class="muted">The file is validated for timestamp coverage, cadence, duplicates, and required values before activation.</p>
+            <input type="file" name="file" accept=".csv,text/csv">
+            <button type="submit">{{ icons.icon("upload") }}<span>Upload</span></button>
+          </form>
+          <form method="post" action="{{ url_for('manual_input', dataset_key=item.spec.key) }}" class="input-action-box">
+            <h2>{{ icons.icon("clipboard") }}<span>Paste Complete CSV</span></h2>
+            <p class="muted">Use paste for a full replacement from a reviewed source file.</p>
+            {% if can_view_model_admin %}
+              <input type="hidden" name="source_type" value="manual">
+            {% endif %}
+            <textarea name="csv_text" rows="4" placeholder="{{ item.spec.expected_headers | join(',') if can_view_model_admin else 'Paste reviewed CSV data here' }}"></textarea>
+            <button type="submit">{{ icons.icon("check-circle") }}<span>{{ "Save Manual Version" if can_view_model_admin else "Save Update" }}</span></button>
+          </form>
+          {% if item.active and can_view_model_admin %}
+            <div class="input-action-box">
+              <h2>{{ icons.icon("download") }}<span>Download</span></h2>
+              <a class="button ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=item.active.version_id) }}">{{ icons.icon("download") }}<span>Download Active CSV</span></a>
+            </div>
+          {% endif %}
         </div>
-        <div class="table-shell input-history-shell">
-          <table class="compact" data-syncfusion-grid="input-versions-{{ item.spec.key }}" data-grid-page-size="5">
-            <thead><tr><th>Version</th><th>Created</th><th>User</th><th>Rows</th><th>Source</th><th>Actions</th></tr></thead>
-            <tbody>
-              {% for version in item.versions[:5] %}
-                <tr>
-                  <td class="mono">{{ version.version_id }}</td>
-                  <td>{{ version.created_at }}</td>
-                  <td>{{ version.user_email }}</td>
-                  <td>{{ version.row_count }}</td>
-                  <td>{{ version.source_type }}</td>
-                  <td class="row-actions">
-                    <a class="button small ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=version.version_id) }}">Download</a>
-                    {% if item.active and item.active.version_id == version.version_id %}
-                      <span class="pill ok">Active</span>
-                    {% else %}
-                      <form method="post" action="{{ url_for('activate_input', dataset_key=item.spec.key, version_id=version.version_id) }}">
-                        <button class="small" type="submit">Activate</button>
-                      </form>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% endif %}
+        {% if item.versions and can_view_model_admin %}
+          <div class="version-history-head">
+            <div>
+              <h2>{{ icons.icon("history") }}<span>Version History</span></h2>
+              <p class="muted">Latest five versions. Older files remain stored and can be reactivated from this table.</p>
+            </div>
+            <span class="pill">{{ icons.icon("history") }}<span>{{ item.versions|length }} versions</span></span>
+          </div>
+          <div class="table-shell input-history-shell">
+            <table class="compact" data-syncfusion-grid="input-versions-{{ item.spec.key }}" data-grid-page-size="5">
+              <thead><tr><th>Version</th><th>Created</th><th>User</th><th>Rows</th><th>Source</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for version in item.versions[:5] %}
+                  <tr>
+                    <td class="mono">{{ version.version_id }}</td>
+                    <td>{{ version.created_at }}</td>
+                    <td>{{ version.user_email }}</td>
+                    <td>{{ version.row_count }}</td>
+                    <td>{{ version.source_type }}</td>
+                    <td class="row-actions">
+                      <a class="button small ghost" href="{{ url_for('download_input', dataset_key=item.spec.key, version_id=version.version_id) }}">{{ icons.icon("download") }}<span>Download</span></a>
+                      {% if item.active and item.active.version_id == version.version_id %}
+                        <span class="pill ok">{{ icons.icon("check-circle") }}<span>Active</span></span>
+                      {% else %}
+                        <form method="post" action="{{ url_for('activate_input', dataset_key=item.spec.key, version_id=version.version_id) }}">
+                          <button class="small" type="submit">{{ icons.icon("check-circle") }}<span>Activate</span></button>
+                        </form>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      {% endcall %}
     </article>
   {% endfor %}
 </section>

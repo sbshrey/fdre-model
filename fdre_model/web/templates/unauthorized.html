@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components/icons.html" as icons %}
 {% block title %}Access Required · FDRE Market Operations{% endblock %}
 {% block content %}
 <section class="panel access-panel">
@@ -12,7 +13,7 @@
   <p class="muted">Ask an FDRE admin to add the email on the Users page, then sign in again.</p>
   {% if auth0_enabled %}
     <form method="post" action="{{ url_for('logout') }}">
-      <button type="submit">Return to Login</button>
+      <button type="submit">{{ icons.icon("user") }}<span>Return to Login</span></button>
     </form>
   {% endif %}
 </section>

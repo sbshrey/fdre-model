@@ -35,6 +35,7 @@ from fdre_model.web.auth import (
     auth0_configured,
     auth0_domain,
     auth0_partially_configured,
+    internal_emails,
     public_base_url,
     user_from_headers,
 )
@@ -43,6 +44,7 @@ from fdre_model.web.auth0_management import Auth0ManagementClient, auth0_connect
 
 _logger = logging.getLogger(__name__)
 PROJECT_SESSION_KEY = "selected_workspace_id"
+DATE_CONTEXT_SESSION_KEY = "selected_date_context"
 
 
 @dataclass(frozen=True)
@@ -160,6 +162,14 @@ def create_app(
         if user is None or not user.is_admin:
             abort(403)
 
+    def can_view_model_admin() -> bool:
+        user = current_user()
+        return _can_view_model_admin(user, auth0_enabled=auth0_enabled)
+
+    def require_model_admin() -> None:
+        if not can_view_model_admin():
+            abort(403)
+
     def external_url(endpoint: str, **values: Any) -> str:
         base_url = public_base_url()
         if base_url:
@@ -202,6 +212,7 @@ def create_app(
                 "project": "FDRE Market Operations",
                 "current_user": None,
                 "is_admin": False,
+                "can_view_model_admin": False,
                 "workspace_scope": None,
                 "portfolio_projects": [],
                 "selected_project": None,
@@ -210,15 +221,19 @@ def create_app(
                 "auth0_management_enabled": auth0_management is not None,
                 "auth0_connection_name": auth0_connection_name(),
                 "syncfusion_license_key": _env_first("FDRE_SYNCFUSION_LICENSE_KEY", "SYNCFUSION_LICENSE_KEY") or "",
+                "date_context": _date_context_view({}, None),
+                "run_presets": _run_presets(),
             }
         state = store.for_scope(user.scope).ensure()
         projects = store.list_projects(user.scope.customer_id)
         selected_project = store.project_record(user.scope)
+        config = store.load_config(state)
         return {
             "active_page": "",
-            "project": store.load_config(state).project.name,
+            "project": config.project.name,
             "current_user": user,
             "is_admin": user.is_admin,
+            "can_view_model_admin": _can_view_model_admin(user, auth0_enabled=auth0_enabled),
             "workspace_scope": state.scope,
             "portfolio_projects": projects,
             "selected_project": selected_project,
@@ -227,23 +242,22 @@ def create_app(
             "auth0_management_enabled": auth0_management is not None,
             "auth0_connection_name": auth0_connection_name(),
             "syncfusion_license_key": _env_first("FDRE_SYNCFUSION_LICENSE_KEY", "SYNCFUSION_LICENSE_KEY") or "",
+            "date_context": _date_context_view(_date_context_payload_from_session(), config),
+            "run_presets": _run_presets(),
         }
 
     @app.get("/")
+    def landing_page() -> Response:
+        current_user()
+        return redirect(url_for("portfolio_page"))
+
     @app.get("/live")
     def live_board() -> str | Response:
-        user = current_user()
-        if (
-            request.path == "/"
-            and user is not None
-            and not request.headers.get("X-Workspace-Id")
-            and len(store.list_projects(user.scope.customer_id)) > 1
-        ):
-            return redirect(url_for("portfolio_page"))
         state = workspace()
         config = store.load_config(state)
         try:
-            live_window = _live_window_selection(request.args, config)
+            live_window = _live_window_selection(_date_values_for_request(request.args), config)
+            _store_date_context(live_window)
         except Exception as exc:
             flash(f"Live preview range failed: {exc}", "error")
             return redirect(url_for("live_board"))
@@ -269,10 +283,53 @@ def create_app(
             market_options=market_options,
             summary=cycle.summary,
             window=_live_window_context(cycle, rows, config),
-            run_presets=_run_presets(),
             alerts=_live_alerts(cycle, rows),
             acknowledgement=acknowledgement,
         )
+
+    @app.get("/live/download/<artifact_key>")
+    def download_current_artifact(artifact_key: str) -> Response:
+        if artifact_key not in {"allocation_csv", "workbook"}:
+            abort(404)
+        user = current_user()
+        if user is None:
+            abort(401)
+        state = workspace()
+        config = store.load_config(state)
+        try:
+            live_window = _live_window_selection(_date_values_for_request(request.args), config)
+            _store_date_context(live_window)
+        except Exception as exc:
+            flash(f"Export range failed: {exc}", "error")
+            return redirect(url_for("live_board"))
+        cycle = store.latest_or_create_cycle(
+            state,
+            now=live_window.live_at,
+            window_start=live_window.window_start,
+            window_end=live_window.window_end,
+            window_mode=live_window.mode,
+        )
+        rows = store.read_allocation_rows(cycle)
+        if not _can_view_model_admin(user, auth0_enabled=auth0_enabled):
+            if artifact_key == "allocation_csv":
+                return _sanitized_allocation_csv_response(rows)
+            return _sanitized_workbook_response(rows, cycle.summary)
+        path = cycle.artifact_paths.get(artifact_key)
+        if path is None or not path.exists():
+            flash("Artifact not found.", "error")
+            return redirect(url_for("live_board"))
+        return send_file(path, as_attachment=True, download_name=path.name)
+
+    @app.post("/date-range")
+    def apply_date_range() -> Response:
+        state = workspace()
+        config = store.load_config(state)
+        try:
+            live_window = _live_window_selection(request.form, config)
+            _store_date_context(live_window)
+        except Exception as exc:
+            flash(f"Date range failed: {exc}", "error")
+        return redirect(_safe_next_url(request.form.get("next")) or url_for("portfolio_page"))
 
     @app.post("/cycles/recalculate")
     def recalculate_cycle() -> Response:
@@ -280,6 +337,7 @@ def create_app(
         config = store.load_config(state)
         try:
             live_window = _live_window_selection(request.form, config)
+            _store_date_context(live_window)
         except Exception as exc:
             flash(f"Live preview range failed: {exc}", "error")
             return redirect(url_for("live_board"))
@@ -291,7 +349,10 @@ def create_app(
             window_mode=live_window.mode,
             force=True,
         )
-        flash(f"Decision cycle recalculated: {cycle.cycle_id}", "success")
+        if can_view_model_admin():
+            flash(f"Decision cycle recalculated: {cycle.cycle_id}", "success")
+        else:
+            flash("Decision cycle recalculated.", "success")
         return redirect(url_for("live_board", **_live_window_query(live_window)))
 
     @app.get("/portfolio")
@@ -300,7 +361,14 @@ def create_app(
         if user is None:
             abort(401)
         projects = store.list_projects(user.scope.customer_id)
-        rows = [_portfolio_project_row(store, user.scope.customer_id, project) for project in projects]
+        config = store.load_config(store.for_scope(user.scope).ensure())
+        try:
+            live_window = _live_window_selection(_date_values_for_request(request.args), config)
+            _store_date_context(live_window)
+        except Exception as exc:
+            flash(f"Portfolio range failed: {exc}", "error")
+            live_window = LiveWindowSelection(live_at=None, window_start=None, window_end=None, custom=False, mode="running")
+        rows = [_portfolio_project_row(store, user.scope.customer_id, project, live_window) for project in projects]
         return render_template(
             "portfolio.html",
             active_page="portfolio",
@@ -313,8 +381,13 @@ def create_app(
         user = current_user()
         if user is None:
             abort(401)
-        project_id = str(request.form.get("project_id") or "").strip()
         projects = store.list_projects(user.scope.customer_id)
+        project_id = str(request.form.get("project_id") or "").strip()
+        if not project_id:
+            try:
+                project_id = projects[int(str(request.form.get("project_ref") or ""))].project_id
+            except (IndexError, TypeError, ValueError):
+                project_id = ""
         if not any(project.project_id == project_id for project in projects):
             flash("Project was not found for this client.", "error")
             return redirect(url_for("portfolio_page"))
@@ -349,10 +422,18 @@ def create_app(
     @app.get("/history")
     def history_page() -> str:
         state = workspace()
+        config = store.load_config(state)
+        cycles = store.list_cycles(state)
+        try:
+            live_window = _live_window_selection(_date_values_for_request(request.args), config)
+            _store_date_context(live_window)
+            cycles = _filter_cycles_by_selection(cycles, live_window)
+        except Exception as exc:
+            flash(f"History range failed: {exc}", "error")
         return render_template(
             "history.html",
             active_page="history",
-            cycles=store.list_cycles(state),
+            cycles=cycles,
             acknowledgements=store.acknowledgement_map(state),
         )
 
@@ -375,7 +456,6 @@ def create_app(
             market_options=_market_options(rows),
             summary=cycle.summary,
             window=_live_window_context(cycle, rows, config),
-            run_presets=_run_presets(),
             alerts=_live_alerts(cycle, rows),
             acknowledgement=store.get_acknowledgement(state, cycle.cycle_id),
         )
@@ -394,7 +474,7 @@ def create_app(
         user = current_user()
         if user is None:
             abort(401)
-        if not user.is_admin:
+        if not _can_view_model_admin(user, auth0_enabled=auth0_enabled):
             if artifact_key == "allocation_csv":
                 return _sanitized_allocation_csv_response(store.read_allocation_rows(cycle))
             if artifact_key == "workbook":
@@ -421,6 +501,11 @@ def create_app(
     @app.get("/inputs/<dataset_key>/download/<version_id>")
     def download_input(dataset_key: str, version_id: str) -> Response:
         state = workspace()
+        user = current_user()
+        if user is None:
+            abort(401)
+        if not _can_view_model_admin(user, auth0_enabled=auth0_enabled):
+            abort(403)
         try:
             version = store.get_version(state, dataset_key, version_id)
         except Exception as exc:
@@ -489,7 +574,10 @@ def create_app(
                 user_email=current_user_email(),
                 activate=True,
             )
-            flash(f"Saved {changed_count} edited rows as active version {new_version.version_id}.", "success")
+            if can_view_model_admin():
+                flash(f"Saved {changed_count} edited rows as active version {new_version.version_id}.", "success")
+            else:
+                flash("Input updates saved and activated.", "success")
         except Exception as exc:
             flash(f"Input edit failed: {exc}", "error")
         query = {key: value for key, value in {"start": start_text, "end": end_text}.items() if value}
@@ -513,7 +601,12 @@ def create_app(
                 user_email=current_user_email(),
                 activate=True,
             )
-            flash("Input version uploaded and activated.", "success")
+            flash(
+                "Input version uploaded and activated."
+                if can_view_model_admin()
+                else "Input update uploaded and activated.",
+                "success",
+            )
         except Exception as exc:
             flash(f"Upload failed: {exc}", "error")
         return redirect(url_for("inputs_page"))
@@ -532,7 +625,12 @@ def create_app(
                 user_email=current_user_email(),
                 activate=True,
             )
-            flash("Manual input version saved and activated.", "success")
+            flash(
+                "Manual input version saved and activated."
+                if can_view_model_admin()
+                else "Manual input update saved and activated.",
+                "success",
+            )
         except Exception as exc:
             flash(f"Manual input failed: {exc}", "error")
         return redirect(url_for("inputs_page"))
@@ -542,14 +640,14 @@ def create_app(
         state = workspace()
         try:
             store.activate_version(state, dataset_key, version_id)
-            flash("Input version activated.", "success")
+            flash("Input version activated." if can_view_model_admin() else "Input activated.", "success")
         except Exception as exc:
             flash(f"Activation failed: {exc}", "error")
         return redirect(url_for("inputs_page"))
 
     @app.get("/rules")
     def rules_page() -> str:
-        require_admin()
+        require_model_admin()
         state = workspace()
         config = store.load_config(state)
         return render_template(
@@ -564,7 +662,7 @@ def create_app(
 
     @app.post("/rules/save")
     def save_rules() -> Response:
-        require_admin()
+        require_model_admin()
         state = workspace()
         existing = {rule.rule_id: rule for rule in store.load_rules(state)}
         rules: list[RuleDefinition] = []
@@ -594,7 +692,7 @@ def create_app(
 
     @app.get("/assumptions")
     def assumptions_page() -> str:
-        require_admin()
+        require_model_admin()
         state = workspace()
         config = store.load_config(state)
         return render_template(
@@ -608,7 +706,7 @@ def create_app(
 
     @app.post("/assumptions/save")
     def save_assumptions() -> Response:
-        require_admin()
+        require_model_admin()
         state = workspace()
         current = store.load_config(state).to_dict()
         try:
@@ -642,7 +740,7 @@ def create_app(
 
     @app.post("/feeds/save")
     def save_feeds() -> Response:
-        require_admin()
+        require_model_admin()
         state = workspace()
         try:
             keys = request.form.getlist("feed_key")
@@ -734,9 +832,9 @@ def create_app(
     @app.get("/login")
     def login() -> Response:
         if not auth0_enabled:
-            return redirect(url_for("live_board"))
+            return redirect(url_for("portfolio_page"))
         if current_user() is not None:
-            return redirect(url_for("live_board"))
+            return redirect(url_for("portfolio_page"))
         if auth0_client is None:
             abort(503)
         return auth0_client.authorize_redirect(redirect_uri=external_url("auth0_callback"))
@@ -744,7 +842,7 @@ def create_app(
     @app.get("/callback")
     def auth0_callback() -> Response:
         if not auth0_enabled or auth0_client is None:
-            return redirect(url_for("live_board"))
+            return redirect(url_for("portfolio_page"))
         token = auth0_client.authorize_access_token()
         claims = token.get("userinfo") or auth0_client.userinfo(token=token)
         user = CurrentUser.from_claims(dict(claims))
@@ -752,7 +850,7 @@ def create_app(
         if current_user() is None:
             return redirect(url_for("unauthorized"))
         workspace()
-        return redirect(url_for("live_board"))
+        return redirect(url_for("portfolio_page"))
 
     @app.get("/unauthorized")
     def unauthorized() -> str:
@@ -771,7 +869,7 @@ def create_app(
             )
             return redirect(f"https://{auth0_domain()}/v2/logout?{query}")
         flash("Logged out.", "success")
-        return redirect(url_for("live_board"))
+        return redirect(url_for("portfolio_page"))
 
     @app.post("/cycles/<cycle_id>/acknowledge")
     def acknowledge_cycle(cycle_id: str) -> Response:
@@ -787,6 +885,34 @@ def create_app(
         except Exception as exc:
             flash(f"Acknowledgement failed: {exc}", "error")
         return redirect(url_for("live_board"))
+
+    @app.post("/cycles/current/acknowledge")
+    def acknowledge_current_cycle() -> Response:
+        state = workspace()
+        config = store.load_config(state)
+        try:
+            form_values = dict(request.form)
+            if form_values.get("system_live_at") and not form_values.get("live_at"):
+                form_values["live_at"] = form_values["system_live_at"]
+            live_window = _live_window_selection(_date_values_for_request(form_values), config)
+            cycle = store.latest_or_create_cycle(
+                state,
+                now=live_window.live_at,
+                window_start=live_window.window_start,
+                window_end=live_window.window_end,
+                window_mode=live_window.mode,
+            )
+            store.acknowledge_cycle(
+                state,
+                cycle.cycle_id,
+                user_email=current_user_email(),
+                note=request.form.get("note", ""),
+            )
+            flash("Decision cycle acknowledged.", "success")
+            return redirect(url_for("live_board", **_live_window_query(live_window)))
+        except Exception as exc:
+            flash(f"Acknowledgement failed: {exc}", "error")
+            return redirect(url_for("live_board"))
 
     @app.get("/favicon.ico")
     def favicon() -> Response:
@@ -837,6 +963,22 @@ def _user_with_scope(user: CurrentUser, scope: WorkspaceScope) -> CurrentUser:
     )
 
 
+def _can_view_model_admin(user: CurrentUser | None, *, auth0_enabled: bool) -> bool:
+    if user is None or not user.is_admin:
+        return False
+    if user.email in internal_emails():
+        return True
+    if not auth0_enabled:
+        # Trusted-header local/dev mode keeps admin model access unless explicitly disabled.
+        return str(os.environ.get("FDRE_MODEL_LOCAL_ADMINS_INTERNAL", "true")).strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
+    return False
+
+
 def _persistence_from_env() -> HostedPersistence | None:
     backend = _storage_backend_name()
     if backend == "local":
@@ -846,10 +988,22 @@ def _persistence_from_env() -> HostedPersistence | None:
     raise ValueError("FDRE_STORAGE_BACKEND must be local or hosted.")
 
 
-def _portfolio_project_row(store: LocalWorkspaceStore, customer_id: str, project: Any) -> dict[str, Any]:
+def _portfolio_project_row(
+    store: LocalWorkspaceStore,
+    customer_id: str,
+    project: Any,
+    live_window: LiveWindowSelection | None = None,
+) -> dict[str, Any]:
     scope = WorkspaceScope.from_values(customer_id, project.project_id)
     state = store.for_scope(scope).ensure()
-    cycle = store.latest_or_create_cycle(state)
+    config = store.load_config(state)
+    cycle = store.latest_or_create_cycle(
+        state,
+        now=live_window.live_at if live_window else None,
+        window_start=live_window.window_start if live_window else None,
+        window_end=live_window.window_end if live_window else None,
+        window_mode=live_window.mode if live_window else "running",
+    )
     acknowledgement = store.get_acknowledgement(state, cycle.cycle_id) if cycle else None
     summary = cycle.summary if cycle else {}
     critical = int(summary.get("source_health_critical") or 0)
@@ -862,11 +1016,25 @@ def _portfolio_project_row(store: LocalWorkspaceStore, customer_id: str, project
         "source_status": source_status,
         "data_quality_status": str(summary.get("data_quality_status") or source_status),
         "shortfall_mwh": float(summary.get("shortfall_mwh") or 0.0),
+        "shortfall_band": _shortfall_band(float(summary.get("shortfall_mwh") or 0.0)),
         "peak_compliance_pct": float(summary.get("monthly_peak_90_compliance_pct") or 0.0),
         "annual_cuf_pct": float(summary.get("annual_cuf_pct") or 0.0),
         "acknowledged_by": acknowledgement.user_email if acknowledgement else "",
         "acknowledged_at": acknowledgement.acknowledged_at if acknowledgement else "",
+        "last_reviewed": acknowledgement.acknowledged_at if acknowledgement else cycle.created_at if cycle else "Pending",
+        "open_action": "Review recommended action" if float(summary.get("shortfall_mwh") or 0.0) > 0 else "No immediate action",
+        "window_label": _date_context_view(_date_context_payload(live_window), config)["label"] if live_window else "Running",
     }
+
+
+def _shortfall_band(shortfall_mwh: float) -> str:
+    if shortfall_mwh <= 0:
+        return "None"
+    if shortfall_mwh < 100:
+        return "Low"
+    if shortfall_mwh < 500:
+        return "Moderate"
+    return "High"
 
 
 def _activate_workspace_user(
@@ -982,6 +1150,142 @@ def _run_presets() -> list[dict[str, str]]:
         {"value": "day_ahead", "label": "Day-ahead"},
         {"value": "custom", "label": "Custom"},
     ]
+
+
+def _date_values_for_request(values: Any) -> Any:
+    keys = {"preset", "window_start", "window_end", "live_at"}
+    if any(key in values for key in keys):
+        return values
+    payload = _date_context_payload_from_session()
+    return payload if payload else {}
+
+
+def _date_context_payload_from_session() -> dict[str, str]:
+    payload = session.get(DATE_CONTEXT_SESSION_KEY)
+    if not isinstance(payload, dict):
+        return {}
+    allowed = {"preset", "window_start", "window_end"}
+    return {key: str(value) for key, value in payload.items() if key in allowed and str(value or "").strip()}
+
+
+def _store_date_context(selection: LiveWindowSelection) -> None:
+    session[DATE_CONTEXT_SESSION_KEY] = _date_context_payload(selection)
+
+
+def _date_context_payload(selection: LiveWindowSelection | None) -> dict[str, str]:
+    if selection is None:
+        return {"preset": "running"}
+    payload = {"preset": selection.mode}
+    if selection.mode == "custom" and selection.window_start is not None and selection.window_end is not None:
+        payload["window_start"] = _datetime_local(selection.window_start)
+        payload["window_end"] = _datetime_local(selection.window_end)
+    return payload
+
+
+def _date_context_view(payload: dict[str, str], config: AppConfig | None) -> dict[str, str]:
+    preset = str(payload.get("preset") or "running")
+    labels = {item["value"]: item["label"] for item in _run_presets()}
+    default_start = ""
+    default_live_at = ""
+    default_end = ""
+    if config is not None:
+        try:
+            selection = _live_window_selection(payload, config)
+            if selection.live_at is not None:
+                default_live_at = _datetime_local(selection.live_at)
+            if selection.window_start is not None:
+                default_start = _datetime_local(selection.window_start)
+            if selection.window_end is not None:
+                default_end = _datetime_local(selection.window_end)
+        except Exception:
+            pass
+        if preset == "running" and not (default_start and default_end):
+            try:
+                interval = parse_interval(config.market_model.interval)
+                live_at_dt = floor_datetime(_local_now(config), interval)
+                default_live_at = _datetime_local(live_at_dt)
+                default_start = _datetime_local(live_at_dt - timedelta(hours=config.market_model.recent_hours))
+                default_end = _datetime_local(live_at_dt + timedelta(hours=config.market_model.forecast_hours + 1))
+            except Exception:
+                pass
+    start = str(payload.get("window_start") or default_start)
+    live_at = str(payload.get("live_at") or default_live_at)
+    end = str(payload.get("window_end") or default_end)
+    if preset == "custom" and start and end:
+        label = f"Custom {start.replace('T', ' ')} to {end.replace('T', ' ')}"
+        display_label = _date_range_display_label(start, end)
+        duration_token = _date_range_duration_token(start, end)
+    elif preset in {"intraday", "day_ahead"}:
+        label = labels.get(preset, preset)
+        display_label = _date_range_display_label(start, end) if start and end else label
+        duration_token = _date_range_duration_token(start, end) if start and end else ("ID" if preset == "intraday" else "DA")
+    else:
+        label = "Running window"
+        display_label = _date_range_display_label(start, end) if start and end else label
+        duration_token = _date_range_duration_token(start, end) if start and end else "RUN"
+    return {
+        "preset": preset,
+        "label": label,
+        "display_label": display_label,
+        "duration_token": duration_token,
+        "window_start": start,
+        "live_at": live_at,
+        "window_end": end,
+    }
+
+
+def _date_range_duration_token(start: str, end: str) -> str:
+    try:
+        delta = _parse_input_datetime(end) - _parse_input_datetime(start)
+    except Exception:
+        return "CUS"
+    minutes = max(0, int((delta.total_seconds() + 59) // 60))
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = (minutes + 59) // 60
+    if hours < 24:
+        return f"{hours}h"
+    days = (hours + 23) // 24
+    return f"{days}d"
+
+
+def _date_range_display_label(start: str, end: str) -> str:
+    try:
+        start_dt = _parse_input_datetime(start)
+        end_dt = _parse_input_datetime(end)
+    except Exception:
+        return f"{start.replace('T', ' ')} to {end.replace('T', ' ')}"
+    return f"{_compact_datetime_label(start_dt)} - {_compact_datetime_label(end_dt)}"
+
+
+def _compact_datetime_label(value: datetime) -> str:
+    month = value.strftime("%b")
+    hour = value.hour % 12 or 12
+    minute = value.minute
+    suffix = "am" if value.hour < 12 else "pm"
+    return f"{month} {value.day}, {hour}:{minute:02d} {suffix}"
+
+
+def _filter_cycles_by_selection(cycles: list[Any], selection: LiveWindowSelection) -> list[Any]:
+    if not selection.custom or selection.window_start is None or selection.window_end is None:
+        return cycles
+    result = []
+    for cycle in cycles:
+        try:
+            start = _parse_input_datetime(cycle.window_start)
+            end = _parse_input_datetime(cycle.window_end)
+        except Exception:
+            continue
+        if start < selection.window_end and end > selection.window_start:
+            result.append(cycle)
+    return result
+
+
+def _safe_next_url(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or not text.startswith("/") or text.startswith("//"):
+        return ""
+    return text
 
 
 def _live_window_selection(values: Any, config: AppConfig) -> LiveWindowSelection:
@@ -1309,26 +1613,11 @@ def _input_page_summary(inputs: list[dict[str, Any]]) -> dict[str, int]:
 
 _OPERATOR_ALLOCATION_COLUMNS = [
     "interval_start",
-    "interval_end",
     "status",
     "peak",
-    "wind_mwh",
-    "solar_mwh",
     "available_mwh",
-    "merchant_price",
-    "bess_open_mwh",
-    "bess_close_mwh",
-    "peak_power_sale_mwh",
-    "ppa_sale_mwh",
-    "merchant_sale_mwh",
-    "bess_charge_mwh",
-    "bess_discharge_mwh",
-    "curtailment_mwh",
     "shortfall_mwh",
-    "penalty_value",
-    "revenue_value",
     "recommended_market",
-    "rule",
     "reason",
 ]
 
@@ -1358,7 +1647,7 @@ def _sanitized_workbook_response(rows: list[dict[str, str]], summary: dict[str, 
             workbook,
             "Summary",
             ["metric", "value"],
-            [{"metric": key, "value": value} for key, value in summary.items()],
+            _public_summary_rows(summary),
             header_fmt,
             number_fmt,
         )
@@ -1401,28 +1690,26 @@ def _write_public_workbook_sheet(
 def _operator_allocation_row(row: dict[str, str]) -> dict[str, Any]:
     return {
         "interval_start": row.get("interval_start", ""),
-        "interval_end": row.get("interval_end", ""),
         "status": row.get("status", ""),
         "peak": "Peak" if row.get("is_peak") == "1" else "Non-peak",
-        "wind_mwh": row.get("wind_mwh", ""),
-        "solar_mwh": row.get("solar_mwh", ""),
         "available_mwh": row.get("available_mwh", ""),
-        "merchant_price": row.get("merchant_price", ""),
-        "bess_open_mwh": row.get("bess_open_mwh", ""),
-        "bess_close_mwh": row.get("bess_close_mwh", ""),
-        "peak_power_sale_mwh": row.get("peak_power_sale_mwh", ""),
-        "ppa_sale_mwh": row.get("ppa_sale_mwh", ""),
-        "merchant_sale_mwh": row.get("merchant_sale_mwh", ""),
-        "bess_charge_mwh": row.get("bess_charge_mwh", ""),
-        "bess_discharge_mwh": row.get("bess_discharge_mwh", ""),
-        "curtailment_mwh": row.get("curtailment_mwh", ""),
         "shortfall_mwh": row.get("shortfall_mwh", ""),
-        "penalty_value": row.get("penalty_value", ""),
-        "revenue_value": row.get("revenue_value", ""),
         "recommended_market": row.get("recommended_market", ""),
-        "rule": _business_rule_labels(row.get("applied_rule_ids")),
         "reason": _why_for_row(row)["summary"],
     }
+
+
+def _public_summary_rows(summary: dict[str, Any]) -> list[dict[str, str]]:
+    shortfall = _float(summary.get("shortfall_mwh"))
+    data_quality = str(summary.get("data_quality_status") or "ok")
+    return [
+        {"metric": "data_quality_status", "value": data_quality},
+        {"metric": "risk_level", "value": _shortfall_band(shortfall)},
+        {
+            "metric": "recommended_action",
+            "value": "Review recommended action" if shortfall > 0 else "No immediate action",
+        },
+    ]
 
 
 def _why_for_row(row: dict[str, str]) -> dict[str, Any]:

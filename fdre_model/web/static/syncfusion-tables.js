@@ -92,6 +92,9 @@
     if (table.dataset.syncfusionReady === "1") {
       return;
     }
+    if (table.closest("[hidden]")) {
+      return;
+    }
     if (!window.ej || !window.ej.grids || !window.ej.grids.Grid) {
       return;
     }
@@ -147,4 +150,10 @@
   }
 
   onReady(enhanceTables);
+  document.addEventListener("fdre:collapsible-toggle", function (event) {
+    if (!event.detail || !event.detail.expanded) {
+      return;
+    }
+    Array.prototype.slice.call(event.target.querySelectorAll(GRID_SELECTOR)).forEach(enhanceTable);
+  });
 }());

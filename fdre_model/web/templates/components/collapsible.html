@@ -1,0 +1,40 @@
+{% import "components/icons.html" as icons %}
+{% macro section(id, title, eyebrow="", summary="", badge="", badge_class="", default_open=False, force_open=False, icon_name="") -%}
+  {% set is_open = default_open or force_open %}
+  <section
+    class="collapsible-section {% if force_open %}force-open{% endif %}"
+    data-collapsible
+    data-default-open="{{ 'true' if is_open else 'false' }}"
+    data-force-open="{{ 'true' if force_open else 'false' }}"
+  >
+    <h2 class="collapsible-heading">
+      <button
+        id="{{ id }}-trigger"
+        class="collapsible-trigger"
+        type="button"
+        aria-expanded="{{ 'true' if is_open else 'false' }}"
+        aria-controls="{{ id }}-panel"
+      >
+        {% if icon_name %}
+          <span class="collapsible-icon">{{ icons.icon(icon_name) }}</span>
+        {% endif %}
+        <span class="collapsible-title-block">
+          {% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}
+          <span class="collapsible-title">{{ title }}</span>
+          {% if summary %}<span class="collapsible-summary">{{ summary }}</span>{% endif %}
+        </span>
+        {% if badge %}<span class="pill {{ badge_class }}">{{ badge }}</span>{% endif %}
+        <span class="collapsible-chevron" aria-hidden="true"></span>
+      </button>
+    </h2>
+    <div
+      id="{{ id }}-panel"
+      class="collapsible-panel"
+      role="region"
+      aria-labelledby="{{ id }}-trigger"
+      {% if not is_open %}hidden{% endif %}
+    >
+      {{ caller() }}
+    </div>
+  </section>
+{%- endmacro %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components/icons.html" as icons %}
 {% block title %}Portfolio | FDRE Market Operations{% endblock %}
 {% block content %}
 <section class="page-header">
@@ -6,10 +7,11 @@
     <p class="eyebrow">Client Portfolio</p>
     <h1>FDRE Project Operations</h1>
     <p class="muted">{{ current_user.scope.customer_id }} · {{ project_count }} active project{{ "" if project_count == 1 else "s" }}</p>
+    <p class="muted">Portfolio range: {{ date_context.label }}</p>
   </div>
   {% if is_admin %}
     <div class="actions">
-      <a class="button" href="#add-project">Add Project</a>
+      <a class="button" href="#add-project">{{ icons.icon("plus") }}<span>Add Project</span></a>
     </div>
   {% endif %}
 </section>
@@ -21,33 +23,58 @@
         <div>
           <p class="eyebrow">{{ row.record.status }}</p>
           <h2>{{ row.record.name }}</h2>
-          <p class="muted">{{ row.record.project_id }}</p>
+          {% if can_view_model_admin %}
+            <p class="muted">{{ row.record.project_id }}</p>
+          {% endif %}
         </div>
-        <span class="pill {{ row.data_quality_status }}">{{ row.data_quality_status }}</span>
+        <span class="pill {{ row.data_quality_status }}">
+          {% if row.data_quality_status == "ok" %}{{ icons.icon("shield-check") }}{% else %}{{ icons.icon("alert-triangle") }}{% endif %}
+          <span>{{ row.data_quality_status }}</span>
+        </span>
       </div>
-      <div class="portfolio-meta">
-        <span><strong>Offtaker</strong>{{ row.record.offtaker or "Not set" }}</span>
-        <span><strong>Location</strong>{{ row.record.location or "Not set" }}</span>
-        <span><strong>Contract</strong>{{ row.record.contract_label or "Not set" }}</span>
-        <span><strong>Capacity</strong>{{ row.record.capacity_summary or "Default FDRE template" }}</span>
-      </div>
-      <div class="portfolio-kpis">
-        <span><strong>{{ "%.1f"|format(row.shortfall_mwh) }}</strong>Shortfall MWh</span>
-        <span><strong>{{ "%.1f"|format(row.peak_compliance_pct) }}%</strong>Peak compliance</span>
-        <span><strong>{{ "%.1f"|format(row.annual_cuf_pct) }}%</strong>Annual CUF</span>
-      </div>
-      <div class="portfolio-footer">
-        <span class="muted">Cycle {{ row.latest_cycle_at }}</span>
-        {% if row.acknowledged_by %}
-          <span class="pill ok">Ack {{ row.acknowledged_by }}</span>
+      <div class="portfolio-focus">
+        {% if can_view_model_admin %}
+          <span class="portfolio-focus-metric"><span class="metric-icon">{{ icons.icon("zap") }}</span><strong>{{ "%.1f"|format(row.shortfall_mwh) }}</strong><span>Shortfall MWh</span></span>
         {% else %}
-          <span class="pill warning">Needs review</span>
+          <span class="portfolio-focus-metric"><span class="metric-icon">{{ icons.icon("zap") }}</span><strong>{{ row.shortfall_band }}</strong><span>Risk level</span></span>
+        {% endif %}
+        {% if row.acknowledged_by %}
+          <span class="pill ok">{{ icons.icon("check-circle") }}<span>{{ "Ack " ~ row.acknowledged_by if can_view_model_admin else "Reviewed" }}</span></span>
+        {% else %}
+          <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>Needs review</span></span>
         {% endif %}
       </div>
+      <details class="portfolio-details">
+        <summary>{{ icons.icon("briefcase") }}<span>{{ "Project details" if can_view_model_admin else "Operating summary" }}</span></summary>
+        {% if can_view_model_admin %}
+          <div class="portfolio-meta">
+            <span><strong>Offtaker</strong>{{ row.record.offtaker or "Not set" }}</span>
+            <span><strong>Location</strong>{{ row.record.location or "Not set" }}</span>
+            <span><strong>Contract</strong>{{ row.record.contract_label or "Not set" }}</span>
+            <span><strong>Capacity</strong>{{ row.record.capacity_summary or "Default FDRE template" }}</span>
+          </div>
+          <div class="portfolio-kpis">
+            <span><strong>{{ "%.1f"|format(row.peak_compliance_pct) }}%</strong>Peak compliance</span>
+            <span><strong>{{ "%.1f"|format(row.annual_cuf_pct) }}%</strong>Annual CUF</span>
+            <span><strong>{{ row.latest_cycle_at }}</strong>Latest cycle</span>
+          </div>
+        {% else %}
+          <div class="portfolio-meta">
+            <span><strong>Readiness</strong>{{ row.data_quality_status }}</span>
+            <span><strong>Risk level</strong>{{ row.shortfall_band }}</span>
+            <span><strong>Last reviewed</strong>{{ row.last_reviewed }}</span>
+            <span><strong>Open action</strong>{{ row.open_action }}</span>
+          </div>
+        {% endif %}
+      </details>
       <form method="post" action="{{ url_for('select_project') }}" class="actions">
-        <input type="hidden" name="project_id" value="{{ row.record.project_id }}">
+        {% if can_view_model_admin %}
+          <input type="hidden" name="project_id" value="{{ row.record.project_id }}">
+        {% else %}
+          <input type="hidden" name="project_ref" value="{{ loop.index0 }}">
+        {% endif %}
         <input type="hidden" name="next" value="{{ url_for('live_board') }}">
-        <button type="submit">Open Project</button>
+        <button type="submit">{{ icons.icon("arrow-right") }}<span>Open Project</span></button>
       </form>
     </article>
   {% else %}
@@ -68,16 +95,18 @@
         <a class="drawer-close" href="{{ url_for('portfolio_page') }}" aria-label="Close add project panel">Close</a>
       </div>
       <form method="post" action="{{ url_for('create_project') }}" class="drawer-form">
-        <label><span>Project ID</span><input name="project_id" placeholder="sjvn-fdre" required></label>
+        <label><span>{{ "Project ID" if can_view_model_admin else "Project code" }}</span><input name="project_id" placeholder="sjvn-fdre" required></label>
         <label><span>Name</span><input name="name" placeholder="SJVN FDRE" required></label>
         <label><span>Status</span><select name="status"><option value="active">active</option><option value="planned">planned</option></select></label>
-        <label><span>Offtaker</span><input name="offtaker" placeholder="SJVN"></label>
-        <label><span>Location</span><input name="location" placeholder="Site / region"></label>
-        <label><span>Contract Label</span><input name="contract_label" placeholder="FDRE PPA"></label>
-        <label><span>Capacity Summary</span><textarea name="capacity_summary" rows="3" placeholder="Wind 211 MW | Solar 105 MW | BESS 100 MWh"></textarea></label>
+        {% if can_view_model_admin %}
+          <label><span>Offtaker</span><input name="offtaker" placeholder="SJVN"></label>
+          <label><span>Location</span><input name="location" placeholder="Site / region"></label>
+          <label><span>Contract Label</span><input name="contract_label" placeholder="FDRE PPA"></label>
+          <label><span>Capacity Summary</span><textarea name="capacity_summary" rows="3" placeholder="Wind 211 MW | Solar 105 MW | BESS 100 MWh"></textarea></label>
+        {% endif %}
         <div class="drawer-actions">
           <a class="button secondary" href="{{ url_for('portfolio_page') }}">Cancel</a>
-          <button type="submit">Create Project</button>
+          <button type="submit">{{ icons.icon("plus") }}<span>Create Project</span></button>
         </div>
       </form>
     </aside>

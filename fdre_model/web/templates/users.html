@@ -1,25 +1,47 @@
 {% extends "base.html" %}
+{% import "components/collapsible.html" as ui %}
+{% import "components/icons.html" as icons %}
 {% block title %}Users · FDRE Market Operations{% endblock %}
 {% block content %}
-<section class="page-header">
+{% set active_user_count = users|selectattr("active")|list|length %}
+{% set inactive_user_count = users|rejectattr("active")|list|length %}
+<section class="page-header admin-page-header">
   <div>
     <p class="eyebrow">Access Control</p>
     <h1>Users</h1>
-    <p class="muted">Auth0 is the identity source. New Auth0 users are active by default unless deactivated here.</p>
+    <p class="muted">
+      {% if can_view_model_admin %}
+        Auth0 is the identity source. New Auth0 users are active by default unless deactivated here.
+      {% else %}
+        Manage who can access this client workspace. Identity setup remains outside this operations console.
+      {% endif %}
+    </p>
   </div>
 </section>
 
-{% if auth0_management_enabled %}
-  <section class="panel compact">
-    <div class="panel-head">
-      <div>
-        <h2>Available Auth0 Users</h2>
-        <p class="muted">Fetched from Auth0. Users are auto-activated for this client on sync or first login.</p>
-      </div>
-      <span class="pill ok">{{ auth0_users|length }} fetched</span>
-    </div>
+<section class="summary-grid admin-summary-grid minimal-summary-grid">
+  <div class="summary-tile">
+    <span>{{ icons.icon("users") }}<span>Active access</span></span>
+    <strong>{{ active_user_count }}</strong>
+    <small>{{ inactive_user_count }} inactive</small>
+  </div>
+  <div class="summary-tile">
+    {% if can_view_model_admin %}
+      <span>{{ icons.icon("shield-check") }}<span>Locked admins</span></span>
+      <strong>{{ env_admin_emails|length }}</strong>
+      <small>Environment controlled</small>
+    {% else %}
+      <span>{{ icons.icon("alert-triangle") }}<span>Inactive access</span></span>
+      <strong>{{ inactive_user_count }}</strong>
+      <small>Can be reactivated by an admin</small>
+    {% endif %}
+  </div>
+</section>
+
+{% if auth0_management_enabled and can_view_model_admin %}
+  {% call ui.section("users-auth0-directory", "Available Auth0 Users", "Directory", "Fetched from Auth0 only when needed.", auth0_users|length ~ " fetched", icon_name="users") %}
     {% if auth0_users_error %}
-      <div class="message message-error">Auth0 user fetch failed: {{ auth0_users_error }}</div>
+      <div class="panel-body"><div class="message message-error">Auth0 user fetch failed: {{ auth0_users_error }}</div></div>
     {% elif auth0_users %}
       <div class="table-shell">
         <table data-syncfusion-grid="auth0-users" data-grid-height="420" data-grid-page-size="10">
@@ -30,7 +52,7 @@
               <th>Auth0</th>
               <th>FDRE Access</th>
               <th>Last Login</th>
-              <th></th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -41,24 +63,24 @@
                 <td>
                   <div class="status-stack">
                     {% if user.blocked %}
-                      <span class="pill critical">blocked</span>
+                      <span class="pill critical">{{ icons.icon("alert-triangle") }}<span>blocked</span></span>
                     {% else %}
-                      <span class="pill ok">unblocked</span>
+                      <span class="pill ok">{{ icons.icon("check-circle") }}<span>unblocked</span></span>
                     {% endif %}
                     {% if user.email_verified %}
-                      <span class="pill ok">verified</span>
+                      <span class="pill ok">{{ icons.icon("shield-check") }}<span>verified</span></span>
                     {% else %}
-                      <span class="pill warning">unverified</span>
+                      <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>unverified</span></span>
                     {% endif %}
                   </div>
                 </td>
                 <td>
                   {% if user.fdre_status == "active" %}
-                    <span class="pill ok">active</span>
+                    <span class="pill ok">{{ icons.icon("check-circle") }}<span>active</span></span>
                   {% elif user.fdre_status == "inactive" %}
-                    <span class="pill critical">inactive</span>
+                    <span class="pill critical">{{ icons.icon("alert-triangle") }}<span>inactive</span></span>
                   {% else %}
-                    <span class="pill warning">{{ user.fdre_status }}</span>
+                    <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>{{ user.fdre_status }}</span></span>
                   {% endif %}
                   <span class="muted"> / {{ user.fdre_role }}</span>
                 </td>
@@ -66,7 +88,7 @@
                 <td class="row-actions">
                   {% if user.can_reactivate %}
                     <form method="post" action="{{ url_for('activate_user', email=user.email) }}">
-                      <button class="small ghost" type="submit">Reactivate</button>
+                      <button class="small ghost" type="submit">{{ icons.icon("check-circle") }}<span>Reactivate</span></button>
                     </form>
                   {% else %}
                     <span class="muted">Default active</span>
@@ -78,71 +100,76 @@
         </table>
       </div>
     {% else %}
-      <p class="empty-state">No Auth0 users were returned by the Management API.</p>
+      <div class="panel-body"><p class="empty-state">No Auth0 users were returned by the Management API.</p></div>
     {% endif %}
-  </section>
+  {% endcall %}
 {% endif %}
 
-<div class="split compact">
-  <section class="panel">
-    <div class="panel-head">
-      <div>
-        <h2>Activate by Email</h2>
-        <p class="muted">Fallback for a specific Auth0 email. Auth0 must already contain the user.</p>
-      </div>
+<section class="panel compact admin-action-card">
+  <div class="panel-head">
+    <div>
+      <h2>Activate by Email</h2>
+      <p class="muted">Use only when a user needs workspace access now.</p>
     </div>
+  </div>
+  <div class="admin-activation-row">
     <form method="post" action="{{ url_for('save_user') }}" class="manual-form">
       <label>
         <span>Email</span>
         <input name="email" type="email" required placeholder="operator@example.com">
       </label>
       <div class="actions end">
-        <button type="submit">Activate User</button>
+        <button type="submit">{{ icons.icon("check-circle") }}<span>Activate User</span></button>
       </div>
     </form>
-  </section>
+  </div>
+</section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <div>
-        <h2>Auth0 Identity</h2>
-        {% if auth0_management_enabled %}
-          <p class="muted">Management API is configured. This portal lists users and toggles FDRE access only.</p>
-        {% else %}
-          <p class="muted">Management API is not configured. This page toggles FDRE app access for configured users.</p>
-        {% endif %}
+{% if can_view_model_admin %}
+  {% call ui.section("users-access-settings", "Access Settings", "Admin Details", "Directory status, portal scope, and environment-controlled admins.", "hidden", icon_name="settings") %}
+    <section class="panel admin-action-card">
+      <div class="panel-head">
+        <div>
+          <h2>Auth0 Identity</h2>
+          {% if auth0_management_enabled %}
+            <p class="muted">Management API is configured. This portal lists users and toggles FDRE access only.</p>
+          {% else %}
+            <p class="muted">Management API is not configured. This page toggles FDRE app access for configured users.</p>
+          {% endif %}
+        </div>
       </div>
-    </div>
-    <div class="meta-grid user-meta">
-      <div>
-        <strong>Connection</strong>
-        <span>{{ auth0_connection_name }}</span>
+      <div class="meta-grid user-meta">
+        <div>
+          <strong>Connection</strong>
+          <span>{{ auth0_connection_name }}</span>
+        </div>
+        <div>
+          <strong>Portal Scope</strong>
+          <span>activate / deactivate</span>
+        </div>
       </div>
-      <div>
-        <strong>Portal Scope</strong>
-        <span>activate / deactivate</span>
-      </div>
-    </div>
-    <h2>Environment Admins</h2>
-    <p class="muted">These users are locked as active admins from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS.</p>
-    {% if env_admin_emails %}
-      <ul class="compact-list">
-        {% for email in env_admin_emails %}
-          <li class="mono">{{ email }}</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p class="muted">No environment admins are configured.</p>
-    {% endif %}
-  </section>
-</div>
+      <h2>Environment Admins</h2>
+      <p class="muted">These users are locked as active admins from FDRE_ADMIN_EMAILS or FDRE_MODEL_ADMIN_EMAILS.</p>
+      {% if env_admin_emails %}
+        <ul class="compact-list">
+          {% for email in env_admin_emails %}
+            <li class="mono">{{ email }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No environment admins are configured.</p>
+      {% endif %}
+    </section>
+  {% endcall %}
+{% endif %}
 
-<section class="panel compact">
+<section class="panel compact table-panel client-users-panel">
   <div class="panel-head">
     <div>
       <h2>Client Users</h2>
-      <p class="muted">{{ users|length }} configured users</p>
+      <p class="muted">Operational access list for this client workspace.</p>
     </div>
+    <span class="pill ok">{{ icons.icon("check-circle") }}<span>{{ active_user_count }} active</span></span>
   </div>
   <div class="table-shell">
     <table data-syncfusion-grid="client-users" data-grid-height="520" data-grid-page-size="10">
@@ -151,39 +178,43 @@
           <th>Email</th>
           <th>Role</th>
           <th>Status</th>
-          <th>Source</th>
-          <th>Updated</th>
-          <th>Updated By</th>
-          <th>Notes</th>
-          <th></th>
+          {% if can_view_model_admin %}
+            <th class="optional-column" data-grid-hidden="true">Source</th>
+            <th class="optional-column" data-grid-hidden="true">Updated</th>
+            <th class="optional-column" data-grid-hidden="true">Updated By</th>
+            <th class="optional-column" data-grid-hidden="true">Notes</th>
+          {% endif %}
+          <th>Action</th>
         </tr>
       </thead>
       <tbody>
         {% for user in users %}
           <tr>
             <td class="mono">{{ user.email }}</td>
-            <td><span class="pill {% if user.role == 'admin' %}ok{% endif %}">{{ user.role }}</span></td>
+            <td><span class="pill {% if user.role == 'admin' %}ok{% endif %}">{{ icons.icon("user") }}<span>{{ user.role }}</span></span></td>
             <td>
               {% if user.active %}
-                <span class="pill ok">active</span>
+                <span class="pill ok">{{ icons.icon("check-circle") }}<span>active</span></span>
               {% else %}
-                <span class="pill critical">inactive</span>
+                <span class="pill critical">{{ icons.icon("alert-triangle") }}<span>inactive</span></span>
               {% endif %}
             </td>
-            <td>{{ user.source }}</td>
-            <td class="mono">{{ user.updated_at }}</td>
-            <td>{{ user.updated_by }}</td>
-            <td class="wrap">{{ user.notes }}</td>
+            {% if can_view_model_admin %}
+              <td class="optional-column">{{ user.source }}</td>
+              <td class="mono optional-column">{{ user.updated_at }}</td>
+              <td class="optional-column">{{ user.updated_by }}</td>
+              <td class="wrap optional-column">{{ user.notes }}</td>
+            {% endif %}
             <td class="row-actions">
               {% if user.source == 'env' %}
                 <span class="muted">Locked</span>
               {% elif user.active %}
                 <form method="post" action="{{ url_for('deactivate_user', email=user.email) }}">
-                  <button class="small ghost" type="submit">Deactivate</button>
+                  <button class="small ghost" type="submit">{{ icons.icon("alert-triangle") }}<span>Deactivate</span></button>
                 </form>
               {% else %}
                 <form method="post" action="{{ url_for('activate_user', email=user.email) }}">
-                  <button class="small ghost" type="submit">Activate</button>
+                  <button class="small ghost" type="submit">{{ icons.icon("check-circle") }}<span>Activate</span></button>
                 </form>
               {% endif %}
             </td>

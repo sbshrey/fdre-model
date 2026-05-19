@@ -2,6 +2,91 @@
 
 This file tracks the known gaps between the current MVP and the expected live-ready FDRE operations system. Work proceeds top-down. When the user says `continue`, pick the next unchecked item.
 
+## Active Design Focus
+
+- [x] 1. Critique production UX pain points from an authenticated client-facing session.
+  - Landing opened into the Live Board before portfolio/project context.
+  - Date controls were buried inside the Live Board as technical start/live/end fields.
+  - Live Board exposed cycle metadata, window controls, alerts, KPIs, compliance, source health, filters, and grid at once.
+  - Inputs repeated upload, paste, schema, and version history for every source.
+  - Rules and Assumptions exposed checksums, JSON, workbook references, and audit tables too prominently.
+  - Primary workflow actions competed visually with secondary exports and admin/audit actions.
+  - Dense Syncfusion grids helped search/sort but still surfaced too much raw technical detail.
+- [x] 2. Make Portfolio the landing page while keeping Live Board at `/live`.
+- [x] 3. Add a global date-range selector in the top-right shell.
+  - Quick presets: Running, Intraday, Day-ahead.
+  - Custom range: start and end; live interval is derived automatically from project time.
+  - Persisted in session and applied to Portfolio, Live Board, and History.
+- [x] 4. Simplify Live Board hierarchy with collapsible supporting sections.
+  - Keep data quality, alerts, acknowledgement, KPIs, and allocation grid visible.
+  - Collapse operating window controls, workbook metrics, source health, and filters.
+- [x] 5. Simplify Inputs with compact source panels and action disclosure.
+  - Keep status, coverage, rows, active version, edit, and download visible.
+  - Move upload, paste CSV, expected schema, and version history into collapsible source actions.
+- [x] 6. Collapse admin/reference content on Rules and Assumptions.
+  - Keep rule editor and market model assumptions prominent.
+  - Move metadata, workbook references, variable registries, and audit trails behind disclosure controls.
+- [x] 7. Modernize remaining admin and reference pages.
+  - Users now opens with access summary metrics, clearer Auth0/admin panels, and labeled action columns.
+  - Feeds now presents integration-readiness summary before the editable catalog table.
+  - History now uses date/workspace context, cycle summary tiles, and a framed decision-cycle grid.
+  - Mobile navigation now keeps primary links in a compact horizontal row instead of stacking every item.
+- [x] 8. Reduce default information density across the app.
+  - Hide run metadata, exports, input version details, project metadata, feed details, user audit columns, history model references, and rule JSON behind disclosure controls.
+  - Keep primary actions, warning/critical status, current attention, and shortfall/peak indicators visible.
+- [x] 9. Rearrange Live Preview into a compact operating-window visualization.
+  - Replace the stretched preview disclosure with a segmented actual/live/forecast timeline and compact From/Live/To points.
+  - Pair Live Preview with Data Quality and top KPIs so the first viewport shows the operating state without wide empty cards.
+  - Re-tune summary grids and project/source lists so other pages avoid stretched one- or two-card layouts.
+- [x] 10. Add icon-assisted scanning across the interface.
+  - Add a shared SVG icon macro for navigation, context selectors, actions, status pills, metric tiles, and collapsible section headers.
+  - Keep text labels for clarity while using icons to reduce pure text scanning load on dense operational pages.
+- [x] 11. Refine the global date range selector into a compact Datadog-style flow.
+  - Show a duration token plus readable from-to range in the top bar.
+  - Keep direct editable start/end fields in the dropdown.
+  - Move calendar picking into a second screen with a back path to preset ranges.
+  - Remove live as a user-selectable option; live interval remains derived from project time.
+- [x] 12. Improve History business-summary readability.
+  - Rename the grid column to Business Summary and make the risk summary visible in-row.
+  - Replace cramped two-column detail text with a readable report card.
+  - Anchor the card left from the rightmost details button so it does not clip at the viewport edge.
+- [x] 13. Restore client-safe Live Board exports.
+  - Show Export on the client Live Board.
+  - Keep links routed through sanitized CSV/XLSX artifact responses for non-internal users.
+
+## Client-Facing IP Reduction Backlog
+
+- [x] 1. Separate internal model access from client admin access.
+  - Keep Users/project administration available to client admins.
+  - Restrict Rules, Assumptions, raw model artifacts, rule JSON, workbook mappings, and model-version internals to explicitly allowlisted internal emails in Auth0 production.
+  - Keep trusted-header local admin access available for development unless `FDRE_MODEL_LOCAL_ADMINS_INTERNAL=false`.
+- [x] 2. Strip Live Board model internals from the client view.
+  - Remove or internal-gate workbook metrics, P1-P5 labels, rule path, technical audit, source health internals, row counts, cycle IDs, workspace codes, model versions, and storage backend text.
+  - Replace with business-safe labels: performance indicators, risk drivers, input readiness, and recommended action.
+- [x] 3. Simplify Inputs to operational source readiness only.
+  - Remove active version IDs, schema/header lists, version-history tables, raw downloads, row counts, and source-type labels from normal client view.
+  - Move upload/update into a guided drawer with validation-first messaging.
+- [x] 4. Redact History for client-facing audit.
+  - Replace cycle IDs, model-version references, row counts, and exact technical windows with report dates, status, acknowledgement, shortfall band, and business summary.
+- [x] 5. Reduce Portfolio commercial detail exposure.
+  - Hide offtaker, contract label, detailed capacity summary, raw project IDs, and exact shortfall values unless explicitly needed.
+  - Prefer risk levels, shortfall bands, last reviewed, and open action.
+- [x] 6. Simplify Users page to access management only.
+  - Remove Auth0 implementation wording, connection names, environment admins, source, updated-by, and last-login details from client admin view.
+- [x] 7. Simplify Feeds page to integration readiness only.
+  - Hide protocol, cadence, fallback, owner, and connector roadmap fields from non-internal users.
+- [x] 8. Align exports and APIs with the redacted UI.
+  - Ensure non-internal downloads/API responses cannot expose hidden model internals even if routes are called directly.
+
+## Paused Functional Backlog
+
+- [ ] Complete BESS dispatch modeling.
+  - Apply BESS degradation/SOH to usable capacity, enforce C-rate constraints, and add residual discharge/arbitrage behavior.
+- [ ] Implement merchant buy and RE procurement rule packs.
+  - Penalty minimization, annual CUF + 10%, 5% annual procurement cap, and GDAM/other market placeholders.
+- [ ] Add workbook parity tests.
+  - Build representative `MODEL v2` scenarios and assert app allocations match workbook rules for peak and non-peak cases.
+
 ## Backlog
 
 - [x] 1. Add auth/RBAC boundary and protect admin surfaces.
@@ -49,12 +134,6 @@ This file tracks the known gaps between the current MVP and the expected live-re
   - Cases 2/3/4/5/7: forecast-driven BESS charging, PPA-vs-merchant tariff ordering, and residual BESS/merchant behavior.
 - [x] 15. Implement workbook peak rule cases.
   - Cases 6/7 plus Clause 1/iii merchant-for-peak behavior using live peak power and monthly compliance state.
-- [ ] 16. Complete BESS dispatch modeling.
-  - Apply BESS degradation/SOH to usable capacity, enforce C-rate constraints, and add residual discharge/arbitrage behavior.
-- [ ] 17. Implement merchant buy and RE procurement rule packs.
-  - Penalty minimization, annual CUF + 10%, 5% annual procurement cap, and GDAM/other market placeholders.
-- [ ] 18. Add workbook parity tests.
-  - Build representative `MODEL v2` scenarios and assert app allocations match workbook rules for peak and non-peak cases.
 - [x] 19. Add portfolio-ready client/project operations foundation.
   - Treat `customer_id` as the client and `workspace_id` as the project.
   - Add a customer portfolio registry, project selector, project creation, and project roll-up board.
@@ -95,3 +174,15 @@ This file tracks the known gaps between the current MVP and the expected live-re
 - 2026-05-16: Item 14 completed with enabled non-peak workbook dispatch for cases 2/3/4/5/7, using forecast curtailment, BESS headroom, and T1-vs-T2 tariff ordering.
 - 2026-05-16: Item 15 completed with Cap9 live peak-power targets, peak Case 6/7 residual handling, cycle-level monthly 90% peak compliance state, and Clause 1/iii merchant-for-peak support.
 - 2026-05-17: Items 19-23 completed with portfolio registry, client-level users, project selector, project creation, run presets, data-quality gate, feed catalog metadata, hosted project persistence, and regression coverage.
+- 2026-05-19: Design remediation phase updated Portfolio landing, global date range UX, Live Board hierarchy, Inputs disclosure, Rules/Assumptions disclosure, Users, Feeds, and History page framing; regression tests and desktop/mobile browser layout checks passed.
+- 2026-05-19: Added a stricter minimal-default-view pass so advanced metadata and technical fields are hidden until explicitly opened; regression tests and desktop/mobile browser layout checks passed.
+- 2026-05-19: Rearranged Live Preview into a compact timeline/card visualization and tightened shared summary grids on other pages; regression tests and desktop/mobile browser layout checks passed.
+- 2026-05-19: Added icon-assisted navigation, actions, status, metric, and disclosure affordances across operational pages; regression tests and desktop/mobile browser layout checks passed.
+- 2026-05-19: Started client-facing IP reduction backlog and completed item 1 with internal-only model admin access for Rules/Assumptions and raw model artifacts.
+- 2026-05-19: Completed client-facing IP reduction item 2 by redacting Live Board cycle/workspace IDs, model versions, export links, formulas, source internals, hidden technical columns, rule paths, and technical audit from non-internal views while preserving internal diagnostics.
+- 2026-05-19: Completed client-facing IP reduction item 3 by simplifying Inputs to readiness/update flows for clients and gating active version IDs, schema/header lists, raw downloads, row counts, source-type labels, and version history to internal model admins.
+- 2026-05-19: Completed client-facing IP reduction item 4 by converting client History into report-date, acknowledgement, shortfall-band, and business-summary views while keeping cycle IDs, exact windows, workspace codes, model versions, row counts, and user acknowledgement emails internal.
+- 2026-05-19: Completed client-facing IP reduction item 5 by replacing Portfolio exact shortfall/project detail exposure with risk level, readiness, last reviewed, and open-action signals for clients, while hiding raw project IDs, offtaker, contract, and capacity detail outside internal mode.
+- 2026-05-19: Completed client-facing IP reduction item 6 by reducing client Users to access activation/deactivation, hiding Auth0 directory implementation details, connection/environment-admin metadata, source/update/audit columns, and last-login style fields outside internal mode.
+- 2026-05-19: Completed client-facing IP reduction item 7 by reducing client Feeds to integration-readiness status and keeping protocol, cadence, fallback, owner, connector-roadmap, and feed-edit controls internal-only.
+- 2026-05-19: Completed client-facing IP reduction item 8 by blocking non-internal raw input downloads, reducing public allocation exports to client-visible columns, blocking model/input-version JSON artifacts, and limiting public workbook summaries to data-quality, risk-level, and action signals.

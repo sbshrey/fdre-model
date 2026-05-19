@@ -1,54 +1,81 @@
 {% extends "base.html" %}
+{% import "components/icons.html" as icons %}
 {% block title %}Edit {{ spec.label }} | FDRE Market Operations{% endblock %}
 {% block content %}
 <section class="page-header">
   <div>
-    <p class="eyebrow">Input Editor</p>
-    <h1>Edit {{ spec.label }}</h1>
-    <p class="muted">Save changes as a new active input version. Previous versions remain available for audit and rollback.</p>
+    <p class="eyebrow">{{ "Input Editor" if can_view_model_admin else "Input Update" }}</p>
+    <h1>{{ "Edit" if can_view_model_admin else "Update" }} {{ spec.label }}</h1>
+    <p class="muted">
+      {% if can_view_model_admin %}
+        Save changes as a new active input version. Previous versions remain available for audit and rollback.
+      {% else %}
+        Review the operating window, apply only the needed corrections, and activate the updated source.
+      {% endif %}
+    </p>
+  </div>
+  <div class="header-meta-strip">
+    {% if can_view_model_admin %}
+      <span>{{ icons.icon("check-circle") }}<strong>Active</strong>{{ active.source_type }}</span>
+      <span>{{ icons.icon("database") }}<strong>Rows</strong>{{ row_count }}</span>
+    {% else %}
+      <span>{{ icons.icon("check-circle") }}<strong>Status</strong>Ready</span>
+      <span>{{ icons.icon("calendar") }}<strong>Coverage</strong>{{ active.coverage_start }} to {{ active.coverage_end }}</span>
+    {% endif %}
   </div>
   <div class="actions">
-    <a class="button ghost" href="{{ url_for('inputs_page') }}">Back to Inputs</a>
-    <a class="button ghost" href="{{ url_for('download_input', dataset_key=spec.key, version_id=active.version_id) }}">Download Active CSV</a>
+    <a class="button ghost" href="{{ url_for('inputs_page') }}">{{ icons.icon("arrow-right") }}<span>Back to Inputs</span></a>
+    {% if can_view_model_admin %}
+      <a class="button ghost" href="{{ url_for('download_input', dataset_key=spec.key, version_id=active.version_id) }}">{{ icons.icon("download") }}<span>Download Active CSV</span></a>
+    {% endif %}
   </div>
 </section>
 
 <section class="editor-guide">
   <div>
-    <strong>1</strong>
+    <strong>{{ icons.icon("clock") }}</strong>
     <span>Choose the time window to inspect.</span>
   </div>
   <div>
-    <strong>2</strong>
+    <strong>{{ icons.icon("pencil") }}</strong>
     <span>Edit interval values or paste matching CSV rows.</span>
   </div>
   <div>
-    <strong>3</strong>
-    <span>Save a new active version with user and source audit.</span>
+    <strong>{{ icons.icon("check-circle") }}</strong>
+    <span>{{ "Save a new active version with user and source audit." if can_view_model_admin else "Save a reviewed update for operations." }}</span>
   </div>
 </section>
 
 <section class="panel input-source-panel">
   <div class="panel-head">
     <div>
-      <p class="eyebrow">Currently Active</p>
-      <h2>Active Version</h2>
-      <p class="muted mono">{{ active.version_id }}</p>
+      <p class="eyebrow">{{ "Currently Active" if can_view_model_admin else "Current Source" }}</p>
+      <h2>{{ "Active Version" if can_view_model_admin else "Source Readiness" }}</h2>
+      {% if can_view_model_admin %}
+        <p class="muted mono">{{ active.version_id }}</p>
+      {% else %}
+        <p class="muted">Coverage is available for the selected operating source.</p>
+      {% endif %}
     </div>
-    <span class="pill ok">{{ active.source_type }}</span>
+    <span class="pill ok">{{ icons.icon("check-circle") }}<span>{{ active.source_type if can_view_model_admin else "Ready" }}</span></span>
   </div>
   <div class="input-status-strip">
-    <div><strong>Rows</strong><span>{{ row_count }}</span></div>
     <div><strong>Coverage</strong><span>{{ active.coverage_start }} to {{ active.coverage_end }}</span></div>
-    <div><strong>Created By</strong><span>{{ active.user_email }}</span></div>
-    <div><strong>Expected CSV</strong><span>{{ spec.expected_headers | join(", ") }}</span></div>
+    {% if can_view_model_admin %}
+      <div><strong>Rows</strong><span>{{ row_count }}</span></div>
+      <div><strong>Created By</strong><span>{{ active.user_email }}</span></div>
+      <div><strong>Expected CSV</strong><span>{{ spec.expected_headers | join(", ") }}</span></div>
+    {% else %}
+      <div><strong>Status</strong><span>Ready for updates</span></div>
+      <div><strong>Validation</strong><span>Checked before activation</span></div>
+    {% endif %}
   </div>
 </section>
 
 <form method="get" class="panel input-window-form">
   <div>
     <p class="eyebrow">Preview Window</p>
-    <h2>Editable Rows</h2>
+    <h2>{{ "Editable Rows" if can_view_model_admin else "Editable Window" }}</h2>
   </div>
   <div class="input-window-fields">
     <label>
@@ -60,7 +87,7 @@
       <input type="datetime-local" name="end" value="{{ end }}">
     </label>
     <div class="form-actions input-window-actions">
-      <button type="submit">Load Window</button>
+      <button type="submit">{{ icons.icon("check-circle") }}<span>Load Window</span></button>
     </div>
   </div>
 </form>
@@ -72,10 +99,16 @@
   <section class="panel">
     <div class="panel-head">
       <div>
-        <h2>Window Rows</h2>
-        <p class="muted">{{ rows|length }} row{% if rows|length != 1 %}s{% endif %} loaded. Timestamps are locked so cadence and coverage stay consistent.</p>
+        <h2>{{ "Window Rows" if can_view_model_admin else "Window Values" }}</h2>
+        <p class="muted">
+          {% if can_view_model_admin %}
+            {{ rows|length }} row{% if rows|length != 1 %}s{% endif %} loaded. Timestamps are locked so cadence and coverage stay consistent.
+          {% else %}
+            Timestamps are locked so cadence and coverage stay consistent.
+          {% endif %}
+        </p>
       </div>
-      <button type="submit">Save Edited Version</button>
+      <button type="submit">{{ icons.icon("check-circle") }}<span>{{ "Save Edited Version" if can_view_model_admin else "Save Update" }}</span></button>
     </div>
     {% if rows %}
       <div class="table-shell editor-shell">
@@ -125,9 +158,9 @@
         <p class="muted">Optional. If populated, pasted rows replace matching timestamps and the table edits above are ignored.</p>
       </div>
     </div>
-    <textarea name="paste_csv" rows="6" placeholder="{{ spec.expected_headers | join(',') }}"></textarea>
+    <textarea name="paste_csv" rows="6" placeholder="{{ spec.expected_headers | join(',') if can_view_model_admin else 'Paste reviewed CSV data here' }}"></textarea>
     <div class="actions end">
-      <button type="submit">Save Pasted Version</button>
+      <button type="submit">{{ icons.icon("clipboard") }}<span>{{ "Save Pasted Version" if can_view_model_admin else "Save Pasted Update" }}</span></button>
     </div>
   </section>
 </form>

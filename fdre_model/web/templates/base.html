@@ -1,3 +1,4 @@
+{% import "components/icons.html" as icons %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -15,6 +16,7 @@
     <script src="https://cdn.syncfusion.com/ej2/33.2.3/dist/ej2.min.js" defer></script>
     <script src="{{ url_for('static', filename='syncfusion-tables.js') }}" defer></script>
   {% endif %}
+  <script src="{{ url_for('static', filename='app-ui.js') }}" defer></script>
   {% block head_extra %}{% endblock %}
 </head>
 <body class="page-{{ active_page or 'default' }}">
@@ -27,20 +29,22 @@
       </span>
     </div>
     <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="{{ url_for('portfolio_page') }}" class="{% if active_page == 'portfolio' %}active{% endif %}">Portfolio</a>
-      <a href="{{ url_for('live_board') }}" class="{% if active_page == 'live' %}active{% endif %}">Live Board</a>
-      <a href="{{ url_for('inputs_page') }}" class="{% if active_page == 'inputs' %}active{% endif %}">Inputs</a>
-      {% if is_admin %}
-        <a href="{{ url_for('rules_page') }}" class="{% if active_page == 'rules' %}active{% endif %}">Rules</a>
+      <a href="{{ url_for('portfolio_page') }}" class="{% if active_page == 'portfolio' %}active{% endif %}">{{ icons.icon("briefcase") }}<span>Portfolio</span></a>
+      <a href="{{ url_for('live_board') }}" class="{% if active_page == 'live' %}active{% endif %}">{{ icons.icon("activity") }}<span>Live Board</span></a>
+      <a href="{{ url_for('inputs_page') }}" class="{% if active_page == 'inputs' %}active{% endif %}">{{ icons.icon("database") }}<span>Inputs</span></a>
+      {% if can_view_model_admin %}
+        <a href="{{ url_for('rules_page') }}" class="{% if active_page == 'rules' %}active{% endif %}">{{ icons.icon("sliders") }}<span>Rules</span></a>
       {% endif %}
       <details name="topbar-menu" class="nav-menu {% if active_page in ['feeds', 'history', 'assumptions', 'users'] %}active{% endif %}">
-        <summary>More</summary>
+        <summary>{{ icons.icon("ellipsis") }}<span>More</span></summary>
         <div class="nav-menu-panel">
-          <a href="{{ url_for('feeds_page') }}" class="{% if active_page == 'feeds' %}active{% endif %}">Feeds</a>
-          <a href="{{ url_for('history_page') }}" class="{% if active_page == 'history' %}active{% endif %}">History</a>
+          <a href="{{ url_for('feeds_page') }}" class="{% if active_page == 'feeds' %}active{% endif %}">{{ icons.icon("rss") }}<span>Feeds</span></a>
+          <a href="{{ url_for('history_page') }}" class="{% if active_page == 'history' %}active{% endif %}">{{ icons.icon("history") }}<span>History</span></a>
+          {% if can_view_model_admin %}
+            <a href="{{ url_for('assumptions_page') }}" class="{% if active_page == 'assumptions' %}active{% endif %}">{{ icons.icon("settings") }}<span>Assumptions</span></a>
+          {% endif %}
           {% if is_admin %}
-            <a href="{{ url_for('assumptions_page') }}" class="{% if active_page == 'assumptions' %}active{% endif %}">Assumptions</a>
-            <a href="{{ url_for('users_page') }}" class="{% if active_page == 'users' %}active{% endif %}">Users</a>
+            <a href="{{ url_for('users_page') }}" class="{% if active_page == 'users' %}active{% endif %}">{{ icons.icon("users") }}<span>Users</span></a>
           {% endif %}
         </div>
       </details>
@@ -50,7 +54,8 @@
         {% if portfolio_projects %}
           <form method="post" action="{{ url_for('select_project') }}" class="project-switcher">
             <input type="hidden" name="next" value="{{ request.path }}">
-            <label for="project-switcher-select">Project</label>
+            <label class="sr-only" for="project-switcher-select">Project</label>
+            <span class="project-switcher-icon">{{ icons.icon("folder") }}</span>
             <select id="project-switcher-select" name="project_id" onchange="this.form.submit()">
               {% for item in portfolio_projects %}
                 <option value="{{ item.project_id }}" {% if selected_project and selected_project.project_id == item.project_id %}selected{% endif %}>{{ item.name }}</option>
@@ -58,8 +63,102 @@
             </select>
           </form>
         {% endif %}
-        <details name="topbar-menu" class="account-menu">
+        <details name="topbar-menu" class="date-range-menu">
           <summary>
+            <span class="date-range-timezone">UTC+05:30</span>
+            <span class="date-range-icon">{{ icons.icon("clock") }}</span>
+            <span class="date-range-token">{{ date_context.duration_token }}</span>
+            <span class="date-range-value">{{ date_context.display_label }}</span>
+          </summary>
+          <div class="date-range-panel" data-date-range-panel>
+            <div class="date-menu-screen" data-date-menu-screen>
+              <form method="post" action="{{ url_for('apply_date_range') }}" class="date-direct-form" data-date-direct-form>
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="preset" value="custom">
+                <label class="date-direct-field">
+                  <span>From</span>
+                  <input data-direct-start type="datetime-local" name="window_start" value="{{ date_context.window_start }}" aria-label="Start date and time">
+                </label>
+                <span class="date-direct-duration" data-direct-duration>{{ date_context.duration_token }}</span>
+                <label class="date-direct-field">
+                  <span>To</span>
+                  <input data-direct-end type="datetime-local" name="window_end" value="{{ date_context.window_end }}" aria-label="End date and time">
+                </label>
+                <button class="date-direct-apply" type="submit" aria-label="Apply edited range">{{ icons.icon("check-circle") }}</button>
+              </form>
+              <form method="post" action="{{ url_for('apply_date_range') }}" class="date-preset-form">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                {% for preset in run_presets if preset.value != "custom" %}
+                  <button
+                    class="date-preset-button {% if date_context.preset == preset.value %}active{% endif %}"
+                    type="submit"
+                    name="preset"
+                    value="{{ preset.value }}"
+                  >
+                    <span class="date-preset-copy">
+                      <strong>{% if preset.value == "running" %}Running{% else %}{{ preset.label }}{% endif %}</strong>
+                      <small>{% if preset.value == "running" %}Automatic operating window{% elif preset.value == "intraday" %}Current operating day{% else %}Next delivery day{% endif %}</small>
+                    </span>
+                  </button>
+                {% endfor %}
+              </form>
+              <button type="button" class="date-calendar-option" data-calendar-screen-open>
+                <span class="date-calendar-option-icon">{{ icons.icon("calendar") }}</span>
+                <span>
+                  <strong>Select from calendar</strong>
+                  <small>Pick start and end dates</small>
+                </span>
+              </button>
+            </div>
+            <form method="post" action="{{ url_for('apply_date_range') }}" class="date-custom-form" data-date-calendar-screen>
+              <input type="hidden" name="next" value="{{ request.full_path }}">
+              <input type="hidden" name="preset" value="custom">
+              <input data-range-start type="hidden" name="window_start" value="{{ date_context.window_start }}">
+              <input data-range-end type="hidden" name="window_end" value="{{ date_context.window_end }}">
+              <div class="date-calendar-screen-head">
+                <button type="button" class="date-calendar-back" data-calendar-screen-back>{{ icons.icon("arrow-right") }}<span>Ranges</span></button>
+                <strong data-calendar-title>Calendar</strong>
+                <div class="date-calendar-nav-group">
+                  <button type="button" class="date-calendar-nav" data-calendar-prev aria-label="Previous month">{{ icons.icon("arrow-right") }}</button>
+                  <button type="button" class="date-calendar-nav next" data-calendar-next aria-label="Next month">{{ icons.icon("arrow-right") }}</button>
+                </div>
+              </div>
+              <div class="date-range-calendar" data-date-range-picker>
+                <div class="date-calendar-weekdays" aria-hidden="true">
+                  <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                </div>
+                <div class="date-calendar-grid" data-calendar-grid></div>
+              </div>
+              <div class="date-range-editor" role="group" aria-label="Editable custom range">
+                <label class="date-range-edge">
+                  <span>From</span>
+                  <div class="date-edge-fields">
+                    <input data-range-start-date type="date" aria-label="Start date">
+                    <input data-range-start-time type="time" aria-label="Start time" value="00:00">
+                  </div>
+                  <small>Defaults to 12:00 AM</small>
+                </label>
+                <div class="date-range-bridge" aria-hidden="true">
+                  <span class="date-range-line"></span>
+                  <span class="date-range-duration" data-range-duration>Range</span>
+                  <span class="date-range-line"></span>
+                </div>
+                <label class="date-range-edge">
+                  <span>To</span>
+                  <div class="date-edge-fields">
+                    <input data-range-end-date type="date" aria-label="End date">
+                    <input data-range-end-time type="time" aria-label="End time" value="23:59">
+                  </div>
+                  <small>Defaults to 11:59 PM</small>
+                </label>
+              </div>
+              <p class="date-range-feedback" data-range-feedback aria-live="polite"></p>
+              <button type="submit">{{ icons.icon("check-circle") }}<span>Apply Range</span></button>
+            </form>
+          </div>
+        </details>
+        <details name="topbar-menu" class="account-menu">
+          <summary aria-label="Account menu">
             <span class="account-avatar">{{ current_user.email[:1] | upper }}</span>
             <span class="account-summary">
               <span class="account-email">{{ current_user.email }}</span>
@@ -71,7 +170,7 @@
             <p class="account-meta">{{ current_user.role }} · {{ current_user.scope.customer_id }}/{{ current_user.scope.workspace_id }}</p>
             {% if auth0_enabled %}
               <form method="post" action="{{ url_for('logout') }}">
-                <button class="nav-button" type="submit">Logout</button>
+                <button class="nav-button" type="submit">{{ icons.icon("user") }}<span>Logout</span></button>
               </form>
             {% endif %}
           </div>

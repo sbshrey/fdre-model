@@ -64,38 +64,94 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     health = client.get("/api/health")
     assert health.status_code == 200
 
-    live = client.get("/")
+    landing = client.get("/")
+    assert landing.status_code == 302
+    assert landing.headers["Location"] == "/portfolio"
+
+    portfolio = client.get("/portfolio")
+    assert portfolio.status_code == 200
+    assert b"FDRE Project Operations" in portfolio.data
+    assert b"Portfolio range: Running window" in portfolio.data
+    assert b"Risk level" in portfolio.data
+    assert b"Shortfall MWh" not in portfolio.data
+    assert b'name="project_id" value="default"' not in portfolio.data
+    assert b"date-range-menu" in portfolio.data
+    assert b"app-ui.js" in portfolio.data
+
+    live = client.get("/live")
     assert live.status_code == 200
     assert b"Live Board" in live.data
     assert b"Decision Cycle" in live.data
-    assert b"Source Health" in live.data
+    assert b"Input Readiness" in live.data
+    assert b"Source Health" not in live.data
     assert b"Operations Alerts" in live.data
-    assert b"Workbook Metrics" in live.data
-    assert b"P1 forecast curtailment" in live.data
+    assert b"Performance Indicators" in live.data
+    assert b"Workbook Metrics" not in live.data
+    assert b"Forecast risk MWh" in live.data
+    assert b"P1 forecast curtailment" not in live.data
     assert b"Annual CUF" in live.data
-    assert b"Why" in live.data
-    assert b"default 6 actual + 1 live + 24 forecast = 31" in live.data
+    assert b"Decision basis" in live.data
+    assert b"Non-peak workbook dispatch" in live.data
+    assert b"More" in live.data
+    assert b"Current operating mix" in live.data
+    assert b"default 6 actual + 1 live + 24 forecast = 31" not in live.data
     assert b'data-syncfusion-grid="live-board"' in live.data
+    assert b'data-collapsible' in live.data
+    assert b'id="live-window-trigger"' in live.data
+    assert b'id="live-source-health-trigger"' in live.data
     assert b'<th data-grid-width="190">Interval</th>' in live.data
-    assert b'class="why-column" data-grid-width="320">Why' in live.data
-    assert b'data-grid-hidden="true">Wind' in live.data
-    assert b"Rule path" in live.data
+    assert b'class="why-column" data-grid-width="320">Decision basis' in live.data
+    assert b'data-grid-hidden="true">Wind' not in live.data
+    assert b"Run details" not in live.data
+    assert b"Export" in live.data
+    assert b"Report CSV" in live.data
+    assert b"Report XLSX" in live.data
+    assert b'href="/live/download/allocation_csv"' in live.data
+    assert b'href="/live/download/workbook"' in live.data
+    client_csv = client.get("/live/download/allocation_csv")
+    assert client_csv.status_code == 200
+    assert client_csv.headers["Content-Disposition"] == "attachment; filename=market_allocation_public.csv"
+    assert b"audit_trace" not in client_csv.data
+    client_xlsx = client.get("/live/download/workbook")
+    assert client_xlsx.status_code == 200
+    assert client_xlsx.headers["Content-Disposition"].startswith("attachment; filename=fdre_market_model_public.xlsx")
+    assert b"Rule path" not in live.data
     assert b"Technical audit" not in live.data
+    assert b"cycle-" not in live.data
     assert b"PPA selected" in live.data or b"Peak obligation" in live.data
     assert b"cdn.syncfusion.com/ej2/33.2.3" not in live.data
     assert b"syncfusion-tables.js" not in live.data
 
-    admin_live = client.get("/", headers=admin_headers)
+    admin_live = client.get("/live", headers=admin_headers)
     assert admin_live.status_code == 200
+    assert b"Source Health" in admin_live.data
+    assert b"Workbook Metrics" in admin_live.data
+    assert b"P1 forecast curtailment" in admin_live.data
+    assert b"default 6 actual + 1 live + 24 forecast = 31" in admin_live.data
+    assert b'data-grid-hidden="true">Wind' in admin_live.data
+    assert b"Rule path" in admin_live.data
     assert b"Technical audit" in admin_live.data
 
     inputs = client.get("/inputs")
     assert inputs.status_code == 200
     assert b"Solar Generation" in inputs.data
-    assert b"input-versions-solar" in inputs.data
-    assert b"Edit Active" in inputs.data
+    assert b"Input Readiness" in inputs.data
+    assert b"Update Solar Generation" in inputs.data
+    assert b"Guided Update" in inputs.data
+    assert b"input-versions-solar" not in inputs.data
+    assert b"Manage Solar Generation" not in inputs.data
+    assert b"Expected CSV" not in inputs.data
+    assert b"Edit Active" not in inputs.data
+    assert b"Download Active CSV" not in inputs.data
     assert b"Active sources" in inputs.data
     assert b"Operator overrides" in inputs.data
+
+    admin_inputs = client.get("/inputs", headers=admin_headers)
+    assert b"input-versions-solar" in admin_inputs.data
+    assert b"Manage Solar Generation" in admin_inputs.data
+    assert b"Expected CSV" in admin_inputs.data
+    assert b"Edit Active" in admin_inputs.data
+    assert b"Download Active CSV" in admin_inputs.data
 
     upload = client.post(
         "/inputs/solar/manual",
@@ -103,12 +159,13 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
         follow_redirects=True,
     )
     assert upload.status_code == 200
-    assert b"Manual input version saved" in upload.data
+    assert b"Manual input update saved" in upload.data
 
     rules = client.get("/rules", headers=admin_headers)
     assert rules.status_code == 200
     assert b"Peak Power Obligation" in rules.data
     assert b"Rule Versions" in rules.data
+    assert b"Active Rule Version" in rules.data
     assert b"Condition" in rules.data
     assert b"Action" in rules.data
     assert b"Rule Case Reference" in rules.data
@@ -118,6 +175,8 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
     assumptions = client.get("/assumptions", headers=admin_headers)
     assert assumptions.status_code == 200
     assert b"Assumption Versions" in assumptions.data
+    assert b"Market Model" in assumptions.data
+    assert b"Capacities" in assumptions.data
     assert b"Variable Registry" in assumptions.data
     assert b"Cap10" in assumptions.data
     assert b"capacities.peak_power_mwh" in assumptions.data
@@ -132,15 +191,24 @@ def test_live_board_inputs_rules_and_history_flow(tmp_path: Path) -> None:
 
     history = client.get("/history")
     assert history.status_code == 200
-    assert b"Cycles" in history.data
+    assert b"Decision Reports" in history.data
+    assert b"Cycle details" not in history.data
+    assert b"Workspace local-customer/default" not in history.data
+    assert b"Assumptions" not in history.data
+    admin_history = client.get("/history", headers=admin_headers)
+    assert b"Cycles" in admin_history.data
+    assert b"Cycle details" in admin_history.data
+    assert b"Assumptions" in admin_history.data
 
 
 def test_live_board_can_preview_custom_date_range(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
     preview = client.get(
-        "/?window_start=2026-01-01T08:00&live_at=2026-01-01T10:00&window_end=2026-01-01T13:00"
+        "/live?window_start=2026-01-01T08:00&live_at=2026-01-01T10:00&window_end=2026-01-01T13:00",
+        headers=admin_headers,
     )
 
     assert preview.status_code == 200
@@ -149,17 +217,62 @@ def test_live_board_can_preview_custom_date_range(tmp_path: Path) -> None:
     assert b"2026-01-01T08:00" in preview.data
     assert b"2026-01-01T10:00" in preview.data
     assert b"2026-01-01T13:00" in preview.data
+    assert b"System live interval" in preview.data
+    assert b"Live Interval</span><input" not in preview.data
     assert b"5 / 5 rows" in preview.data
     assert b"2026-01-01 08:00:00" in preview.data
     assert b"2026-01-01 12:00:00" in preview.data
 
 
-def test_custom_live_board_recalculate_preserves_preview_range(tmp_path: Path) -> None:
+def test_global_date_range_context_applies_to_date_aware_pages(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
 
+    applied = client.post(
+        "/date-range",
+        data={
+            "preset": "custom",
+            "window_start": "2026-01-01T08:00",
+            "window_end": "2026-01-01T13:00",
+            "next": "/live",
+        },
+        follow_redirects=True,
+    )
+
+    assert applied.status_code == 200
+    assert b"custom" in applied.data
+    assert b"Custom 2026-01-01 08:00 to 2026-01-01 13:00" in applied.data
+    assert b">5h</span>" in applied.data
+    assert b"Jan 1, 8:00 am - Jan 1, 1:00 pm" in applied.data
+    assert b'name="live_at"' not in applied.data
+    assert b"date-menu-screen" in applied.data
+    assert b"date-direct-form" in applied.data
+    assert b"data-calendar-screen-open" in applied.data
+    assert b"data-date-calendar-screen" in applied.data
+    assert b"date-range-editor" in applied.data
+    assert b"data-range-start" in applied.data
+    assert b"data-range-end" in applied.data
+    assert b"data-range-duration" in applied.data
+    assert b"date-range-calendar" in applied.data
+    assert b"data-calendar-grid" in applied.data
+    assert b"data-range-start-time" in applied.data
+    assert b'value="23:59"' in applied.data
+
+    portfolio = client.get("/portfolio")
+    assert b"Portfolio range: Custom 2026-01-01 08:00 to 2026-01-01 13:00" in portfolio.data
+
+    history = client.get("/history")
+    assert b"Showing Custom 2026-01-01 08:00 to 2026-01-01 13:00" in history.data
+
+
+def test_custom_live_board_recalculate_preserves_preview_range(tmp_path: Path) -> None:
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
+
     recalculated = client.post(
         "/cycles/recalculate",
+        headers=admin_headers,
         data={
             "window_start": "2026-01-01T08:00",
             "live_at": "2026-01-01T10:00",
@@ -179,7 +292,7 @@ def test_syncfusion_assets_load_only_with_license_key(tmp_path: Path, monkeypatc
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
 
-    live = client.get("/")
+    live = client.get("/live")
 
     assert live.status_code == 200
     assert b"cdn.syncfusion.com/ej2/33.2.3" in live.data
@@ -190,15 +303,20 @@ def test_syncfusion_assets_load_only_with_license_key(tmp_path: Path, monkeypatc
 def test_input_versions_can_be_downloaded(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
     inputs = client.get("/inputs")
     assert inputs.status_code == 200
+    assert b"Download Active CSV" not in inputs.data
+
+    inputs = client.get("/inputs", headers=admin_headers)
+    assert inputs.status_code == 200
     assert b"Download Active CSV" in inputs.data
-    assert b"Download" in inputs.data
 
     seeded_download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', inputs.data)
     assert seeded_download_path is not None
-    seeded_download = client.get(seeded_download_path.group(1).decode("utf-8"))
+    assert client.get(seeded_download_path.group(1).decode("utf-8")).status_code == 403
+    seeded_download = client.get(seeded_download_path.group(1).decode("utf-8"), headers=admin_headers)
     assert seeded_download.status_code == 200
     assert seeded_download.headers["Content-Disposition"].startswith("attachment;")
     assert "fdre_solar_" in seeded_download.headers["Content-Disposition"]
@@ -211,9 +329,10 @@ def test_input_versions_can_be_downloaded(tmp_path: Path) -> None:
         follow_redirects=True,
     )
     assert overridden.status_code == 200
-    manual_download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', overridden.data)
+    admin_inputs = client.get("/inputs", headers=admin_headers)
+    manual_download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', admin_inputs.data)
     assert manual_download_path is not None
-    manual_download = client.get(manual_download_path.group(1).decode("utf-8"))
+    manual_download = client.get(manual_download_path.group(1).decode("utf-8"), headers=admin_headers)
     assert manual_download.status_code == 200
     assert b"2026-04-01 12:00,30" in manual_download.data
 
@@ -223,7 +342,7 @@ def test_operator_cycle_downloads_hide_internal_rule_audit(tmp_path: Path) -> No
     client = app.test_client()
     admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
-    live = client.get("/")
+    live = client.get("/live", headers=admin_headers)
     cycle_id = re.search(rb"cycle-\d+", live.data).group(0).decode("utf-8")
 
     operator_csv = client.get(f"/cycles/{cycle_id}/download/allocation_csv")
@@ -231,7 +350,10 @@ def test_operator_cycle_downloads_hide_internal_rule_audit(tmp_path: Path) -> No
     assert operator_csv.status_code == 200
     assert operator_csv.headers["Content-Disposition"] == "attachment; filename=market_allocation_public.csv"
     assert b"reason" in operator_csv.data
-    assert b"rule" in operator_csv.data
+    assert b"rule" not in operator_csv.data
+    assert b"wind_mwh" not in operator_csv.data
+    assert b"ppa_sale_mwh" not in operator_csv.data
+    assert b"bess_open_mwh" not in operator_csv.data
     assert b"audit_trace" not in operator_csv.data
     assert b"skipped_rule_ids" not in operator_csv.data
     assert b"input_versions=" not in operator_csv.data
@@ -248,13 +370,16 @@ def test_operator_cycle_downloads_hide_internal_rule_audit(tmp_path: Path) -> No
 def test_active_input_can_be_edited_in_app_as_new_version(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
     editor = client.get("/inputs/solar/edit?start=2026-01-01T06:00&end=2026-01-01T08:00")
 
     assert editor.status_code == 200
-    assert b"Edit Solar Generation" in editor.data
+    assert b"Update Solar Generation" in editor.data
     assert b"2026-01-01 06:00:00" in editor.data
-    assert b"Save Edited Version" in editor.data
+    assert b"Save Update" in editor.data
+    assert b"Download Active CSV" not in editor.data
+    assert b"Expected CSV" not in editor.data
     assert b'data-syncfusion-grid' not in editor.data
 
     saved = client.post(
@@ -269,12 +394,13 @@ def test_active_input_can_be_edited_in_app_as_new_version(tmp_path: Path) -> Non
     )
 
     assert saved.status_code == 200
-    assert b"Saved 1 edited rows as active version" in saved.data
-    assert b"in_app_table_edit" in saved.data
+    assert b"Input updates saved and activated" in saved.data
+    assert b"in_app_table_edit" not in saved.data
 
-    download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', saved.data)
+    admin_inputs = client.get("/inputs", headers=admin_headers)
+    download_path = re.search(rb'href="(/inputs/solar/download/[^"]+)"', admin_inputs.data)
     assert download_path is not None
-    downloaded = client.get(download_path.group(1).decode("utf-8"))
+    downloaded = client.get(download_path.group(1).decode("utf-8"), headers=admin_headers)
 
     assert downloaded.status_code == 200
     assert b"2026-01-01 06:00:00,123.456" in downloaded.data
@@ -283,6 +409,7 @@ def test_active_input_can_be_edited_in_app_as_new_version(tmp_path: Path) -> Non
 def test_peak_schedule_can_be_replaced_with_pasted_csv(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
     saved = client.post(
         "/inputs/peak_schedule/edit",
@@ -295,12 +422,13 @@ def test_peak_schedule_can_be_replaced_with_pasted_csv(tmp_path: Path) -> None:
     )
 
     assert saved.status_code == 200
-    assert b"Saved 1 edited rows as active version" in saved.data
-    assert b"in_app_paste" in saved.data
+    assert b"Input updates saved and activated" in saved.data
+    assert b"in_app_paste" not in saved.data
 
-    download_path = re.search(rb'href="(/inputs/peak_schedule/download/[^"]+)"', saved.data)
+    admin_inputs = client.get("/inputs", headers=admin_headers)
+    download_path = re.search(rb'href="(/inputs/peak_schedule/download/[^"]+)"', admin_inputs.data)
     assert download_path is not None
-    downloaded = client.get(download_path.group(1).decode("utf-8"))
+    downloaded = client.get(download_path.group(1).decode("utf-8"), headers=admin_headers)
 
     assert downloaded.status_code == 200
     assert b"2026-01-01 18:00:00,0" in downloaded.data
@@ -311,16 +439,17 @@ def test_live_board_filters_and_acknowledgement_flow(tmp_path: Path) -> None:
     client = app.test_client()
     headers = {"X-User-Email": "operator@example.com", "X-User-Role": "operator"}
 
-    live = client.get("/", headers=headers)
-    cycle_id = re.search(rb"cycle-\d+", live.data).group(0).decode("utf-8")
+    live = client.get("/live", headers=headers)
+    assert live.status_code == 200
+    assert b"cycle-" not in live.data
 
-    alert_rows = client.get("/?alerts=1&status=forecast", headers=headers)
+    alert_rows = client.get("/live?alerts=1&status=forecast", headers=headers)
     assert alert_rows.status_code == 200
     assert b"Shortfall exposure" in alert_rows.data
     assert b"forecast" in alert_rows.data
 
     acknowledged = client.post(
-        f"/cycles/{cycle_id}/acknowledge",
+        "/cycles/current/acknowledge",
         headers=headers,
         data={"note": "Reviewed live board."},
         follow_redirects=True,
@@ -330,8 +459,8 @@ def test_live_board_filters_and_acknowledgement_flow(tmp_path: Path) -> None:
     assert b"Acknowledged by operator@example.com" in acknowledged.data
 
     history = client.get("/history", headers=headers)
-    assert b"ack" in history.data
-    assert b"operator@example.com" in history.data
+    assert b"Acknowledged" in history.data
+    assert b'<span class="muted">operator@example.com' not in history.data
 
 
 def test_admin_routes_require_admin_role(tmp_path: Path) -> None:
@@ -353,10 +482,70 @@ def test_admin_routes_require_admin_role(tmp_path: Path) -> None:
     assert client.get("/users", headers=admin_headers).status_code == 200
 
 
+def test_auth0_client_admin_is_not_model_admin_by_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("FDRE_AUTH0_DOMAIN", "example.auth0.com")
+    monkeypatch.setenv("FDRE_AUTH0_CLIENT_ID", "client-id")
+    monkeypatch.setenv("FDRE_AUTH0_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("FDRE_MODEL_PUBLIC_BASE_URL", "https://fdre.example.com")
+    monkeypatch.setenv("FDRE_ADMIN_EMAILS", "admin@example.com")
+
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session[AUTH_SESSION_KEY] = CurrentUser.from_claims(
+            {"sub": "auth0|admin", "email": "admin@example.com"}
+        ).to_session()
+
+    portfolio = client.get("/portfolio")
+
+    assert portfolio.status_code == 200
+    assert b">Rules<" not in portfolio.data
+    assert b">Assumptions<" not in portfolio.data
+    assert b">Users<" in portfolio.data
+    assert b"Project code" in portfolio.data
+    assert b"Offtaker" not in portfolio.data
+    assert b"Capacity Summary" not in portfolio.data
+    assert client.get("/rules").status_code == 403
+    assert client.post("/rules/save").status_code == 403
+    assert client.get("/assumptions").status_code == 403
+    assert client.post("/assumptions/save").status_code == 403
+    users_page = client.get("/users")
+    assert users_page.status_code == 200
+    assert b"Inactive access" in users_page.data
+    assert b"Auth0" not in users_page.data
+    assert b"Connection" not in users_page.data
+    assert b"Environment Admins" not in users_page.data
+    assert b"data-grid-hidden=\"true\">Source" not in users_page.data
+
+
+def test_auth0_internal_admin_can_access_model_admin_pages(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("FDRE_AUTH0_DOMAIN", "example.auth0.com")
+    monkeypatch.setenv("FDRE_AUTH0_CLIENT_ID", "client-id")
+    monkeypatch.setenv("FDRE_AUTH0_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("FDRE_MODEL_PUBLIC_BASE_URL", "https://fdre.example.com")
+    monkeypatch.setenv("FDRE_ADMIN_EMAILS", "admin@example.com")
+    monkeypatch.setenv("FDRE_MODEL_INTERNAL_EMAILS", "admin@example.com")
+
+    app = create_app(workspace_root=tmp_path / ".workspace")
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session[AUTH_SESSION_KEY] = CurrentUser.from_claims(
+            {"sub": "auth0|admin", "email": "admin@example.com"}
+        ).to_session()
+
+    portfolio = client.get("/portfolio")
+
+    assert portfolio.status_code == 200
+    assert b">Rules<" in portfolio.data
+    assert b">Assumptions<" in portfolio.data
+    assert client.get("/rules").status_code == 200
+    assert client.get("/assumptions").status_code == 200
+
+
 def test_operator_nav_hides_admin_pages(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
-    response = client.get("/", headers={"X-User-Email": "operator@example.com", "X-User-Role": "operator"})
+    response = client.get("/portfolio", headers={"X-User-Email": "operator@example.com", "X-User-Role": "operator"})
 
     assert response.status_code == 200
     assert b">Rules<" not in response.data
@@ -519,13 +708,13 @@ def test_workspace_headers_isolate_live_board_state(tmp_path: Path) -> None:
         "X-Workspace-Id": "Plant B",
     }
 
-    plant_a = client.get("/", headers=plant_a_headers)
-    plant_b = client.get("/", headers=plant_b_headers)
+    plant_a = client.get("/live", headers=plant_a_headers)
+    plant_b = client.get("/live", headers=plant_b_headers)
 
     assert plant_a.status_code == 200
     assert plant_b.status_code == 200
-    assert b"Workspace acme/plant-a" in plant_a.data
-    assert b"Workspace acme/plant-b" in plant_b.data
+    assert b"Workspace acme/plant-a" not in plant_a.data
+    assert b"Workspace acme/plant-b" not in plant_b.data
     assert (tmp_path / ".workspace" / "customers" / "acme" / "workspaces" / "plant-a").exists()
     assert (tmp_path / ".workspace" / "customers" / "acme" / "workspaces" / "plant-b").exists()
 
@@ -591,13 +780,14 @@ def test_portfolio_page_creates_selects_and_scopes_projects(tmp_path: Path) -> N
 def test_live_board_run_presets(tmp_path: Path) -> None:
     app = create_app(workspace_root=tmp_path / ".workspace")
     client = app.test_client()
+    admin_headers = {"X-User-Email": "admin@example.com", "X-User-Role": "admin"}
 
-    intraday = client.get("/live?preset=intraday&live_at=2026-01-01T10:00")
+    intraday = client.get("/live?preset=intraday&live_at=2026-01-01T10:00", headers=admin_headers)
     assert intraday.status_code == 200
     assert b"intraday" in intraday.data
     assert b"0 actual + 1 live + 8 forecast = 9" in intraday.data
 
-    day_ahead = client.get("/live?preset=day_ahead&live_at=2026-01-01T10:00")
+    day_ahead = client.get("/live?preset=day_ahead&live_at=2026-01-01T10:00", headers=admin_headers)
     assert day_ahead.status_code == 200
     assert b"day-ahead" in day_ahead.data
     assert b"0 actual + 0 live + 24 forecast = 24" in day_ahead.data
@@ -632,9 +822,13 @@ def test_feed_catalog_page_is_viewable_and_admin_editable(tmp_path: Path) -> Non
 
     operator_view = client.get("/feeds")
     assert operator_view.status_code == 200
-    assert b"Feed Catalog" in operator_view.data
+    assert b"Integration Readiness" in operator_view.data
     assert b"Solar Yield Forecast" in operator_view.data
     assert b"Save Feed Catalog" not in operator_view.data
+    assert b"Protocol" not in operator_view.data
+    assert b"Frequency" not in operator_view.data
+    assert b"Fallback" not in operator_view.data
+    assert b"Owner" not in operator_view.data
 
     saved = client.post(
         "/feeds/save",
@@ -694,7 +888,8 @@ def test_auth0_mode_uses_app_managed_users(tmp_path: Path, monkeypatch) -> None:
             {"sub": "auth0|operator", "email": "operator@example.com"}
         ).to_session()
 
-    assert client.get("/").status_code == 200
+    assert client.get("/", follow_redirects=True).status_code == 200
+    assert client.get("/login").headers["Location"] == "/portfolio"
     assert client.get("/rules").status_code == 403
 
     with client.session_transaction() as session:

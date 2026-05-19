@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import "components/collapsible.html" as ui %}
+{% import "components/icons.html" as icons %}
 {% block title %}Live Board | FDRE Market Operations{% endblock %}
 {% block head_extra %}
   {% if active_page == "live" %}
@@ -6,101 +8,206 @@
   {% endif %}
 {% endblock %}
 {% block content %}
-<section class="page-header">
-  <div>
+{% set window_counts = namespace(actual=0, live=0, forecast=0) %}
+{% for row in rows %}
+  {% if row.status == "actual" %}
+    {% set window_counts.actual = window_counts.actual + 1 %}
+  {% elif row.status == "live" %}
+    {% set window_counts.live = window_counts.live + 1 %}
+  {% elif row.status == "forecast" %}
+    {% set window_counts.forecast = window_counts.forecast + 1 %}
+  {% endif %}
+{% endfor %}
+<section class="live-command-header">
+  <div class="live-command-copy">
     <p class="eyebrow">Decision Cycle</p>
-    <h1>{{ cycle.cycle_id }}</h1>
-    <p class="muted">{{ cycle.window_start }} to {{ cycle.window_end }} · created {{ cycle.created_at }}</p>
-    <p class="muted">Workspace {{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</p>
-    <p class="muted">Auto-refresh 60s · {{ storage_backend }} storage</p>
-    <p class="muted mono">assumptions={{ cycle.model_versions.assumptions or "unversioned" }} · rules={{ cycle.model_versions.rules or "unversioned" }}</p>
+    <div class="live-title-row">
+      <h1>Live Board</h1>
+      <span class="pill {{ 'warning' if window.mode != 'running' else 'ok' }}">{{ icons.icon("clock") }}<span>{{ window.mode|replace("_", "-") }}</span></span>
+    </div>
+    <p class="live-window-copy">
+      {% if can_view_model_admin %}
+        {{ cycle.window_start }} to {{ cycle.window_end }}
+      {% else %}
+        {{ date_context.label }}
+      {% endif %}
+    </p>
+    {% if can_view_model_admin %}
+      <span class="sr-only">Workspace {{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</span>
+      <details class="cycle-context-details compact-run-details">
+        <summary>Run details</summary>
+        <div class="cycle-context-grid">
+          <span>
+            <strong>Cycle ID</strong>
+            <code>{{ cycle.cycle_id }}</code>
+          </span>
+          <span>
+            <strong>Workspace</strong>
+            <code>{{ cycle.workspace_scope.customer_id or "local-customer" }}/{{ cycle.workspace_scope.workspace_id or "default" }}</code>
+          </span>
+          <span>
+            <strong>Created</strong>
+            <code>{{ cycle.created_at }}</code>
+          </span>
+          <span>
+            <strong>Assumptions</strong>
+            <code>{{ cycle.model_versions.assumptions or "unversioned" }}</code>
+          </span>
+          <span>
+            <strong>Rules</strong>
+            <code>{{ cycle.model_versions.rules or "unversioned" }}</code>
+          </span>
+          <span>
+            <strong>Refresh</strong>
+            <code>60s · {{ storage_backend }} storage</code>
+          </span>
+        </div>
+      </details>
+    {% endif %}
   </div>
-  <div class="actions">
+  <div class="actions live-command-actions">
     <form method="post" action="{{ url_for('recalculate_cycle') }}">
       <input type="hidden" name="preset" value="{{ window.mode }}">
       {% if window.mode == "custom" %}
         <input type="hidden" name="window_start" value="{{ window.start }}">
         <input type="hidden" name="window_end" value="{{ window.end }}">
-        <input type="hidden" name="live_at" value="{{ window.live_at }}">
       {% endif %}
-      <button type="submit">Recalculate</button>
+      <button type="submit">{{ icons.icon("refresh-cw") }}<span>Recalculate</span></button>
     </form>
     {% if acknowledgement %}
-      <span class="pill ok">Acknowledged</span>
+      <span class="pill ok">{{ icons.icon("check-circle") }}<span>Acknowledged</span></span>
     {% endif %}
-    <a class="button ghost" href="{{ url_for('download_artifact', cycle_id=cycle.cycle_id, artifact_key='allocation_csv') }}">CSV</a>
-    <a class="button ghost" href="{{ url_for('download_artifact', cycle_id=cycle.cycle_id, artifact_key='workbook') }}">XLSX</a>
+    <details class="action-menu">
+      <summary class="button ghost">{{ icons.icon("download") }}<span>Export</span></summary>
+      <div class="action-menu-panel">
+        <a class="button ghost" href="{{ url_for('download_artifact', cycle_id=cycle.cycle_id, artifact_key='allocation_csv') if can_view_model_admin else url_for('download_current_artifact', artifact_key='allocation_csv') }}">{{ icons.icon("download") }}<span>{{ "CSV" if can_view_model_admin else "Report CSV" }}</span></a>
+        <a class="button ghost" href="{{ url_for('download_artifact', cycle_id=cycle.cycle_id, artifact_key='workbook') if can_view_model_admin else url_for('download_current_artifact', artifact_key='workbook') }}">{{ icons.icon("download") }}<span>{{ "XLSX" if can_view_model_admin else "Report XLSX" }}</span></a>
+      </div>
+    </details>
   </div>
 </section>
 
-<section class="panel window-panel">
-  <div class="panel-head">
-    <div>
-      <p class="eyebrow">Live Preview</p>
-      <h2>Operating Window</h2>
+<section class="live-overview-grid">
+  <section class="live-preview-card">
+    <div class="live-preview-head">
+      <div>
+        <p class="eyebrow">Live Preview</p>
+        <h2>Operating Window</h2>
+        <p class="muted">{% if can_view_model_admin %}{{ window.formula }}{% else %}Current operating mix{% endif %}</p>
+        {% if can_view_model_admin and window.mode == "running" %}
+          <span class="sr-only">default {{ window.default_formula }}</span>
+        {% endif %}
+      </div>
+      <span class="pill {{ 'warning' if window.mode != 'running' else 'ok' }}">{{ icons.icon("clock") }}<span>{{ window.mode|replace("_", "-") }}</span></span>
     </div>
-    <div class="window-metrics">
-      <span class="pill">{{ window.formula }}</span>
-      {% if window.mode == "custom" %}
-        <span class="pill warning">custom</span>
-      {% elif window.mode == "intraday" %}
-        <span class="pill warning">intraday</span>
-      {% elif window.mode == "day_ahead" %}
-        <span class="pill warning">day-ahead</span>
-      {% else %}
-        <span class="pill ok">default {{ window.default_formula }}</span>
+    <div class="window-timeline" aria-label="Operating window mix">
+      <span class="timeline-segment actual" style="flex-grow: {{ window_counts.actual if window_counts.actual else 1 }}">
+        {{ icons.icon("database") }}
+        <strong>{{ window_counts.actual if can_view_model_admin else "Ready" }}</strong>
+        <small>actual</small>
+      </span>
+      <span class="timeline-segment live" style="flex-grow: {{ window_counts.live if window_counts.live else 1 }}">
+        {{ icons.icon("activity") }}
+        <strong>{{ window_counts.live if can_view_model_admin else "Now" }}</strong>
+        <small>live</small>
+      </span>
+      <span class="timeline-segment forecast" style="flex-grow: {{ window_counts.forecast if window_counts.forecast else 1 }}">
+        {{ icons.icon("bar-chart") }}
+        <strong>{{ window_counts.forecast if can_view_model_admin else "Outlook" }}</strong>
+        <small>forecast</small>
+      </span>
+    </div>
+    <div class="live-preview-points">
+      <div>
+        <span>From</span>
+        <strong>{{ window.start }}</strong>
+      </div>
+      <div class="preview-live-point">
+        <span>System live interval</span>
+        <strong>{{ window.live_at }}</strong>
+        <small>Automatic</small>
+      </div>
+      <div>
+        <span>To</span>
+        <strong>{{ window.end }}</strong>
+      </div>
+    </div>
+    <details class="window-control-drawer">
+      <summary id="live-window-trigger">{{ icons.icon("sliders") }}<span>Adjust window</span></summary>
+      <form method="get" action="{{ url_for('live_board') }}" class="window-form">
+        <label><span>Run Preset</span><select name="preset">
+          {% for preset in run_presets %}
+            <option value="{{ preset.value }}" {% if window.mode == preset.value %}selected{% endif %}>{{ preset.label }}</option>
+          {% endfor %}
+        </select></label>
+        <label><span>From</span><input type="datetime-local" name="window_start" value="{{ window.start }}"></label>
+        <label><span>To</span><input type="datetime-local" name="window_end" value="{{ window.end }}"></label>
+        <div class="window-live-context">
+          <strong>System live interval</strong>
+          <span>{{ window.live_at }}</span>
+          <small>Set automatically from current project time.</small>
+        </div>
+        <div class="filter-actions">
+          <button type="submit">{{ icons.icon("check-circle") }}<span>Load Window</span></button>
+          <a class="button ghost" href="{{ url_for('live_board') }}">{{ icons.icon("refresh-cw") }}<span>{{ "Default 31 Rows" if can_view_model_admin else "Reset Window" }}</span></a>
+        </div>
+      </form>
+    </details>
+  </section>
+
+  <div class="live-overview-side">
+    <section class="panel compact live-status-card data-quality-panel data-quality-{{ summary.data_quality_status or 'ok' }}">
+      <div class="status-mark status-{{ summary.data_quality_status or 'ok' }}">
+        {% if summary.data_quality_status == "critical" %}
+          {{ icons.icon("alert-triangle") }}
+        {% elif summary.data_quality_status == "warning" %}
+          {{ icons.icon("alert-triangle") }}
+        {% else %}
+          {{ icons.icon("shield-check") }}
+        {% endif %}
+      </div>
+      <div class="live-status-copy">
+        <p class="eyebrow">Data Quality Gate</p>
+        <h2>{% if summary.data_quality_status == "ok" or not summary.data_quality_status %}Inputs ready{% else %}{{ summary.data_quality_status|title }} advisory status{% endif %}</h2>
+        {% if summary.data_quality_messages %}
+          <p class="muted">{{ summary.data_quality_messages }}</p>
+        {% endif %}
+      </div>
+      {% if summary.data_quality_critical_count or summary.data_quality_warning_count %}
+        <div class="health-counts live-status-counts">
+          <span class="pill critical">{{ icons.icon("alert-triangle") }}<span>{{ summary.data_quality_critical_count or 0 }} critical</span></span>
+          <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>{{ summary.data_quality_warning_count or 0 }} warning</span></span>
+        </div>
       {% endif %}
-    </div>
-  </div>
-  <form method="get" action="{{ url_for('live_board') }}" class="window-form">
-    <label><span>Run Preset</span><select name="preset">
-      {% for preset in run_presets %}
-        <option value="{{ preset.value }}" {% if window.mode == preset.value %}selected{% endif %}>{{ preset.label }}</option>
-      {% endfor %}
-    </select></label>
-    <label><span>Start</span><input type="datetime-local" name="window_start" value="{{ window.start }}"></label>
-    <label><span>Live Interval</span><input type="datetime-local" name="live_at" value="{{ window.live_at }}"></label>
-    <label><span>End</span><input type="datetime-local" name="window_end" value="{{ window.end }}"></label>
-    <div class="filter-actions">
-      <button type="submit">Load Window</button>
-      <a class="button ghost" href="{{ url_for('live_board') }}">Default 31 Rows</a>
-    </div>
-  </form>
-</section>
-
-<section class="panel compact data-quality-panel data-quality-{{ summary.data_quality_status or 'ok' }}">
-  <div class="panel-head">
-    <div>
-      <p class="eyebrow">Data Quality Gate</p>
-      <h2>{{ (summary.data_quality_status or "ok")|title }} advisory status</h2>
-      <p class="muted">{{ summary.data_quality_messages or "All active inputs passed the V2 quality gate." }}</p>
-    </div>
-    <div class="health-counts">
-      <span class="pill critical">{{ summary.data_quality_critical_count or 0 }} critical</span>
-      <span class="pill warning">{{ summary.data_quality_warning_count or 0 }} warning</span>
-    </div>
+    </section>
+    <section class="kpis minimal-kpis side-kpis">
+      <div><span class="metric-icon">{{ icons.icon("zap") }}</span><strong>{{ "%.1f"|format(summary.shortfall_mwh or 0) }}</strong><span>Shortfall MWh</span></div>
+      <div><span class="metric-icon">{{ icons.icon("bar-chart") }}</span><strong>{{ "%.1f"|format(summary.peak_power_sale_mwh or 0) }}</strong><span>Peak MWh</span></div>
+    </section>
   </div>
 </section>
 
-<section class="ops-grid">
-  <div class="panel">
+<section class="ops-grid live-ops-grid">
+  <div class="panel live-attention-card">
     <div class="panel-head">
       <div>
         <p class="eyebrow">Operations Alerts</p>
         <h2>Current Attention</h2>
+        {% if can_view_model_admin %}
+          <span class="sr-only">{{ rows|length }} / {{ total_rows }} rows</span>
+        {% endif %}
       </div>
-      <span class="pill">{{ rows|length }} / {{ total_rows }} rows</span>
     </div>
     <div class="alert-list">
       {% for alert in alerts %}
         <div class="alert alert-{{ alert.level }}">
-          <strong>{{ alert.title }}</strong>
+          <strong>{{ icons.icon("alert-triangle") }}<span>{{ alert.title }}</span></strong>
           <span>{{ alert.message }}</span>
         </div>
       {% endfor %}
     </div>
   </div>
-  <div class="panel">
+  <div class="panel live-ack-card">
     <div class="panel-head">
       <div>
         <p class="eyebrow">Operator State</p>
@@ -108,84 +215,81 @@
       </div>
     </div>
     {% if acknowledgement %}
-      <p class="muted">Acknowledged by {{ acknowledgement.user_email }} at {{ acknowledgement.acknowledged_at }}</p>
+      <div class="acknowledged-state">
+        <span class="pill ok">{{ icons.icon("check-circle") }}<span>Acknowledged</span></span>
+        <p class="muted">Acknowledged by {{ acknowledgement.user_email }} at {{ acknowledgement.acknowledged_at }}</p>
+      </div>
       {% if acknowledgement.note %}
         <p>{{ acknowledgement.note }}</p>
       {% endif %}
     {% else %}
-      <form method="post" action="{{ url_for('acknowledge_cycle', cycle_id=cycle.cycle_id) }}" class="ack-form">
-        <textarea name="note" rows="2" placeholder="Optional operator note"></textarea>
-        <button type="submit">Acknowledge Window</button>
-      </form>
+      <details class="ack-drawer">
+        <summary class="button">{{ icons.icon("check-circle") }}<span>Acknowledge</span></summary>
+        <form method="post" action="{{ url_for('acknowledge_cycle', cycle_id=cycle.cycle_id) if can_view_model_admin else url_for('acknowledge_current_cycle') }}" class="ack-form">
+          <input type="hidden" name="preset" value="{{ window.mode }}">
+          {% if window.mode == "custom" %}
+            <input type="hidden" name="window_start" value="{{ window.start }}">
+            <input type="hidden" name="system_live_at" value="{{ window.live_at }}">
+            <input type="hidden" name="window_end" value="{{ window.end }}">
+          {% endif %}
+          <textarea name="note" rows="2" placeholder="Optional note"></textarea>
+          <button type="submit">{{ icons.icon("check-circle") }}<span>Confirm Acknowledgement</span></button>
+        </form>
+      </details>
     {% endif %}
   </div>
 </section>
 
-<section class="kpis">
-  <div><strong>{{ "%.1f"|format(summary.peak_power_sale_mwh or 0) }}</strong><span>Peak MWh</span></div>
-  <div><strong>{{ "%.1f"|format(summary.ppa_sale_mwh or 0) }}</strong><span>PPA MWh</span></div>
-  <div><strong>{{ "%.1f"|format(summary.merchant_sale_mwh or 0) }}</strong><span>Merchant MWh</span></div>
-  <div><strong>{{ "%.1f"|format(summary.shortfall_mwh or 0) }}</strong><span>Shortfall MWh</span></div>
-</section>
-
-<section class="panel compact">
-  <div class="panel-head">
-    <div>
-      <p class="eyebrow">Compliance Forecast</p>
-      <h2>Workbook Metrics</h2>
-      <p class="muted">Decision-cycle metrics behind P1-P5, peak compliance, and annual CUF rule packs.</p>
-    </div>
-    <span class="pill">live {{ summary.metrics_live_interval or window.live_at }}</span>
-  </div>
+{% call ui.section("live-compliance", "Workbook Metrics" if can_view_model_admin else "Performance Indicators", "Compliance Forecast" if can_view_model_admin else "Operating Forecast", "Decision-cycle metrics behind P1-P5, peak compliance, and annual CUF rule packs." if can_view_model_admin else "Selected operating indicators for the current advisory view.", "live " ~ (summary.metrics_live_interval or window.live_at) if can_view_model_admin else date_context.label, icon_name="bar-chart") %}
   <div class="metric-grid">
-    <div><strong>{{ "%.1f"|format(summary.p1_forecast_22h_curtailment_mwh or 0) }}</strong><span>P1 forecast curtailment MWh</span></div>
-    <div><strong>{{ "%.1f"|format(summary.p2_live_curtailment_mwh or 0) }}</strong><span>P2 live curtailment MWh</span></div>
-    <div><strong>{{ "%.1f"|format(summary.p3_monthly_peak_90_deficit_mwh or 0) }}</strong><span>P3 monthly peak deficit MWh</span></div>
-    <div><strong>{{ "%.1f"|format(summary.p4_annual_ppa_generation_5pct_mwh or 0) }}</strong><span>P4 5% annual PPA MWh</span></div>
-    <div><strong>{{ "%.1f"|format(summary.p5_365d_generation_mwh or 0) }}</strong><span>P5 365D generation MWh</span></div>
-    <div><strong>{{ "%.1f"|format(summary.monthly_peak_90_compliance_pct or 0) }}%</strong><span>90% peak compliance</span></div>
-    <div><strong>{{ "%.1f"|format(summary.forecast_30d_peak_possible_mwh or 0) }}</strong><span>30D peak forecast MWh</span></div>
-    <div><strong>{{ "%.1f"|format(summary.annual_cuf_pct or 0) }}%</strong><span>Annual CUF</span></div>
+    <div><span class="metric-icon">{{ icons.icon("bar-chart") }}</span><strong>{{ "%.1f"|format(summary.p1_forecast_22h_curtailment_mwh or 0) }}</strong><span>{{ "P1 forecast curtailment MWh" if can_view_model_admin else "Forecast risk MWh" }}</span></div>
+    <div><span class="metric-icon">{{ icons.icon("activity") }}</span><strong>{{ "%.1f"|format(summary.p2_live_curtailment_mwh or 0) }}</strong><span>{{ "P2 live curtailment MWh" if can_view_model_admin else "Live curtailment MWh" }}</span></div>
+    <div><span class="metric-icon">{{ icons.icon("zap") }}</span><strong>{{ "%.1f"|format(summary.p3_monthly_peak_90_deficit_mwh or 0) }}</strong><span>{{ "P3 monthly peak deficit MWh" if can_view_model_admin else "Peak gap MWh" }}</span></div>
+    <div><span class="metric-icon">{{ icons.icon("briefcase") }}</span><strong>{{ "%.1f"|format(summary.p4_annual_ppa_generation_5pct_mwh or 0) }}</strong><span>{{ "P4 5% annual PPA MWh" if can_view_model_admin else "Annual commitment buffer" }}</span></div>
+    <div><span class="metric-icon">{{ icons.icon("history") }}</span><strong>{{ "%.1f"|format(summary.p5_365d_generation_mwh or 0) }}</strong><span>{{ "P5 365D generation MWh" if can_view_model_admin else "Forward generation MWh" }}</span></div>
+    <div><span class="metric-icon">{{ icons.icon("shield-check") }}</span><strong>{{ "%.1f"|format(summary.monthly_peak_90_compliance_pct or 0) }}%</strong><span>90% peak compliance</span></div>
+    <div><span class="metric-icon">{{ icons.icon("calendar") }}</span><strong>{{ "%.1f"|format(summary.forecast_30d_peak_possible_mwh or 0) }}</strong><span>{{ "30D peak forecast MWh" if can_view_model_admin else "Forward peak cover MWh" }}</span></div>
+    <div><span class="metric-icon">{{ icons.icon("gauge") }}</span><strong>{{ "%.1f"|format(summary.annual_cuf_pct or 0) }}%</strong><span>Annual CUF</span></div>
   </div>
-</section>
+{% endcall %}
 
-<section class="panel compact source-health">
-  <div class="panel-head">
-    <div>
-      <p class="eyebrow">Input Freshness</p>
-      <h2>Source Health</h2>
-    </div>
-    <div class="health-counts">
-      <span class="pill ok">{{ summary.source_health_ok or 0 }} ok</span>
-      <span class="pill warning">{{ summary.source_health_warning or 0 }} warning</span>
-      <span class="pill critical">{{ summary.source_health_critical or 0 }} critical</span>
-    </div>
+{% call ui.section("live-source-health", "Source Health" if can_view_model_admin else "Input Readiness", "Input Freshness" if can_view_model_admin else "Readiness Check", "Freshness and coverage for active source data." if can_view_model_admin else "Current readiness of the inputs behind this operating view.", (summary.source_health_ok or 0) ~ " ok / " ~ (summary.source_health_warning or 0) ~ " warning / " ~ (summary.source_health_critical or 0) ~ " critical" if can_view_model_admin else "", "critical" if summary.source_health_critical else "warning" if summary.source_health_warning else "ok", force_open=(summary.source_health_warning or summary.source_health_critical), icon_name="database") %}
+  <div class="health-counts section-counts">
+    <span class="pill ok">{{ icons.icon("check-circle") }}<span>{{ summary.source_health_ok or 0 }} ok</span></span>
+    <span class="pill warning">{{ icons.icon("alert-triangle") }}<span>{{ summary.source_health_warning or 0 }} warning</span></span>
+    <span class="pill critical">{{ icons.icon("alert-triangle") }}<span>{{ summary.source_health_critical or 0 }} critical</span></span>
   </div>
-  <div class="health-grid">
-    {% for health in cycle.source_health %}
-      <article class="health-card health-{{ health.status }}">
-        <div class="health-title">
-          <strong>{{ health.label }}</strong>
-          <span class="pill {{ health.status }}">{{ health.status }}</span>
-        </div>
-        <p>{{ health.message }}</p>
-        <div class="health-meta">
-          <span>{{ health.coverage_start or "missing" }}</span>
-          <span>{{ health.coverage_end or "missing" }}</span>
-          <span>{{ health.source_type or "unknown" }}</span>
-          <span>{{ health.row_count }} rows</span>
-        </div>
-      </article>
-    {% endfor %}
-  </div>
-</section>
+  {% if can_view_model_admin %}
+    <div class="health-grid">
+      {% for health in cycle.source_health %}
+        <article class="health-card health-{{ health.status }}">
+          <div class="health-title">
+            <strong>{{ health.label }}</strong>
+            <span class="pill {{ health.status }}">
+              {% if health.status == "ok" %}{{ icons.icon("check-circle") }}{% else %}{{ icons.icon("alert-triangle") }}{% endif %}
+              <span>{{ health.status }}</span>
+            </span>
+          </div>
+          <p>{{ health.message }}</p>
+          <div class="health-meta">
+            <span>{{ health.coverage_start or "missing" }}</span>
+            <span>{{ health.coverage_end or "missing" }}</span>
+            <span>{{ health.source_type or "unknown" }}</span>
+            <span>{{ health.row_count }} rows</span>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Input checks are summarized here. Open Inputs only when readiness needs attention.</p>
+  {% endif %}
+{% endcall %}
 
-<section class="panel filter-panel">
+{% call ui.section("live-filters", "Allocation Filters", "Table Controls", "Status, peak, market, and alert-row filters.", "active" if filters.status != "all" or filters.peak != "all" or filters.market != "all" or filters.alerts else "", default_open=(filters.status != "all" or filters.peak != "all" or filters.market != "all" or filters.alerts), icon_name="sliders") %}
   <form method="get" action="{{ url_for('live_board') }}" class="filter-form">
     {% if window.mode == "custom" %}
       <input type="hidden" name="window_start" value="{{ window.start }}">
       <input type="hidden" name="window_end" value="{{ window.end }}">
-      <input type="hidden" name="live_at" value="{{ window.live_at }}">
     {% endif %}
     {% if window.mode in ["intraday", "day_ahead"] %}
       <input type="hidden" name="preset" value="{{ window.mode }}">
@@ -211,11 +315,11 @@
       <span>Alert rows only</span>
     </label>
     <div class="filter-actions">
-      <button type="submit">Apply</button>
-      <a class="button ghost" href="{{ url_for('live_board') }}">Clear</a>
+      <button type="submit">{{ icons.icon("check-circle") }}<span>Apply</span></button>
+      <a class="button ghost" href="{{ url_for('live_board') }}">{{ icons.icon("refresh-cw") }}<span>Clear</span></a>
     </div>
   </form>
-</section>
+{% endcall %}
 
 <section class="table-shell">
   <table data-syncfusion-grid="live-board" data-grid-height="620" data-grid-page-size="25">
@@ -224,51 +328,69 @@
         <th data-grid-width="190">Interval</th>
         <th>Status</th>
         <th>Peak</th>
-        <th class="allocation-detail-column" data-grid-hidden="true">Wind</th>
-        <th class="allocation-detail-column" data-grid-hidden="true">Solar</th>
+        {% if can_view_model_admin %}
+          <th class="allocation-detail-column" data-grid-hidden="true">Wind</th>
+          <th class="allocation-detail-column" data-grid-hidden="true">Solar</th>
+        {% endif %}
         <th>Available</th>
-        <th>SOC Open</th>
-        <th class="allocation-detail-column" data-grid-hidden="true">Peak Sale</th>
-        <th class="allocation-detail-column" data-grid-hidden="true">PPA</th>
-        <th class="allocation-detail-column" data-grid-hidden="true">Merchant</th>
-        <th class="allocation-detail-column" data-grid-hidden="true">BESS +/-</th>
+        {% if can_view_model_admin %}
+          <th class="allocation-detail-column" data-grid-hidden="true">SOC Open</th>
+          <th class="allocation-detail-column" data-grid-hidden="true">Peak Sale</th>
+          <th class="allocation-detail-column" data-grid-hidden="true">PPA</th>
+          <th class="allocation-detail-column" data-grid-hidden="true">Merchant</th>
+          <th class="allocation-detail-column" data-grid-hidden="true">BESS +/-</th>
+        {% endif %}
         <th>Shortfall</th>
         <th>Market</th>
-        <th>Rule</th>
-        <th class="why-column" data-grid-width="320">Why</th>
+        {% if can_view_model_admin %}
+          <th class="allocation-detail-column" data-grid-hidden="true">Rule</th>
+        {% endif %}
+        <th class="why-column" data-grid-width="320">{{ "Why" if can_view_model_admin else "Decision basis" }}</th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
         <tr class="status-{{ row.status }}">
           <td>{{ row.interval_start }}</td>
-          <td><span class="pill">{{ row.status }}</span></td>
+          <td><span class="pill">{{ icons.icon("activity") }}<span>{{ row.status }}</span></span></td>
           <td>{{ "Peak" if row.is_peak == "1" else "Non-peak" }}</td>
-          <td class="allocation-detail-column">{{ "%.1f"|format(row.wind_mwh|float) }}</td>
-          <td class="allocation-detail-column">{{ "%.1f"|format(row.solar_mwh|float) }}</td>
+          {% if can_view_model_admin %}
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.wind_mwh|float) }}</td>
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.solar_mwh|float) }}</td>
+          {% endif %}
           <td>{{ "%.1f"|format(row.available_mwh|float) }}</td>
-          <td>{{ "%.1f"|format(row.bess_open_mwh|float) }}</td>
-          <td class="allocation-detail-column">{{ "%.1f"|format(row.peak_power_sale_mwh|float) }}</td>
-          <td class="allocation-detail-column">{{ "%.1f"|format(row.ppa_sale_mwh|float) }}</td>
-          <td class="allocation-detail-column">{{ "%.1f"|format(row.merchant_sale_mwh|float) }}</td>
-          <td class="allocation-detail-column">{{ "%.1f"|format(row.bess_charge_mwh|float - row.bess_discharge_mwh|float) }}</td>
+          {% if can_view_model_admin %}
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.bess_open_mwh|float) }}</td>
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.peak_power_sale_mwh|float) }}</td>
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.ppa_sale_mwh|float) }}</td>
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.merchant_sale_mwh|float) }}</td>
+            <td class="allocation-detail-column">{{ "%.1f"|format(row.bess_charge_mwh|float - row.bess_discharge_mwh|float) }}</td>
+          {% endif %}
           <td>{{ "%.1f"|format(row.shortfall_mwh|float) }}</td>
           <td>{{ row.recommended_market }}</td>
-          {% if is_admin %}
-            <td class="mono">{{ row.applied_rule_ids }}</td>
-          {% else %}
-            <td>{{ row.business_rule }}</td>
+          {% if can_view_model_admin %}
+            <td class="mono allocation-detail-column">{{ row.applied_rule_ids }}</td>
           {% endif %}
           <td class="why-column">
             <details class="why-detail">
-              <summary>Why</summary>
+              <summary class="{{ 'basis-summary' if not can_view_model_admin else '' }}">
+                {{ icons.icon("file-text") }}
+                {% if can_view_model_admin %}
+                  <span>Why</span>
+                {% else %}
+                  <span class="basis-copy">{{ row.business_rule }}</span>
+                  <span class="basis-more">More</span>
+                {% endif %}
+              </summary>
               <div class="why-card">
                 <p class="why-summary">{{ row.why.summary }}</p>
-                <div class="why-context">
-                  {% for item in row.why.context %}
-                    <span>{{ item }}</span>
-                  {% endfor %}
-                </div>
+                {% if can_view_model_admin %}
+                  <div class="why-context">
+                    {% for item in row.why.context %}
+                      <span>{{ item }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
                 {% if row.why.outcomes %}
                   <div class="why-outcomes">
                     {% for outcome in row.why.outcomes %}
@@ -276,13 +398,13 @@
                     {% endfor %}
                   </div>
                 {% endif %}
-                <strong>Rule path</strong>
-                <ol class="why-steps">
-                  {% for step in row.why.steps %}
-                    <li>{{ step }}</li>
-                  {% endfor %}
-                </ol>
-                {% if is_admin %}
+                {% if can_view_model_admin %}
+                  <strong>Rule path</strong>
+                  <ol class="why-steps">
+                    {% for step in row.why.steps %}
+                      <li>{{ step }}</li>
+                    {% endfor %}
+                  </ol>
                   <details class="technical-audit">
                     <summary>Technical audit</summary>
                     {% for item in row.why.technical %}

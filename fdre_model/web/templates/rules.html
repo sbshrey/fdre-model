@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{% import "components/collapsible.html" as ui %}
+{% import "components/icons.html" as icons %}
 {% block title %}Rules | FDRE Market Operations{% endblock %}
 {% block content %}
+{% set enabled_rule_count = rules|selectattr("enabled")|list|length %}
 <section class="page-header">
   <div>
     <p class="eyebrow">Rule Admin</p>
@@ -9,43 +12,62 @@
       <p class="muted">Active version {{ rule_version.version_id }} · {{ rule_version.user_email }} · {{ rule_version.created_at }}</p>
     {% endif %}
   </div>
+  <div class="header-meta-strip">
+    <span>{{ icons.icon("sliders") }}<strong>Rules</strong>{{ enabled_rule_count }} enabled</span>
+    <span>{{ icons.icon("history") }}<strong>Version</strong>{{ rule_version.source_type if rule_version else "unversioned" }}</span>
+  </div>
+</section>
+<section class="summary-grid reference-summary-grid minimal-summary-grid">
+  <div class="summary-tile">
+    <span>{{ icons.icon("sliders") }}<span>Total rules</span></span>
+    <strong>{{ rules|length }}</strong>
+    <small>{{ enabled_rule_count }} enabled in execution order</small>
+  </div>
 </section>
 {% if rule_version %}
-  <section class="panel compact">
+  {% call ui.section("rules-version-meta", "Active Rule Version", "Model Metadata", rule_version.summary, rule_version.source_type, icon_name="history") %}
     <div class="meta-grid">
       <div><strong>Source</strong><span>{{ rule_version.source_type }}</span></div>
       <div><strong>Checksum</strong><span class="mono">{{ rule_version.checksum }}</span></div>
       <div><strong>Parent</strong><span class="mono">{{ rule_version.parent_version_id or "none" }}</span></div>
       <div><strong>Summary</strong><span>{{ rule_version.summary }}</span></div>
     </div>
-  </section>
+  {% endcall %}
 {% endif %}
-<form method="post" action="{{ url_for('save_rules') }}" class="panel">
-  <table data-syncfusion-grid="rules-admin" data-grid-height="620" data-grid-page-size="10">
-    <thead><tr><th>Enabled</th><th>Priority</th><th>Rule</th><th>Description</th><th>Condition</th><th>Action</th></tr></thead>
-    <tbody>
-      {% for rule in rules|sort(attribute='priority') %}
-        <tr>
-          <td><input type="checkbox" name="enabled:{{ rule.rule_id }}" {% if rule.enabled %}checked{% endif %}></td>
-          <td><input class="priority-input" type="number" name="priority:{{ rule.rule_id }}" value="{{ rule.priority }}"></td>
-          <td><strong>{{ rule.name }}</strong><br><span class="mono">{{ rule.rule_id }}</span><br><span class="pill">{{ rule.rule_pack }}</span></td>
-          <td>{{ rule.description }}</td>
-          <td><textarea class="json-input" name="condition:{{ rule.rule_id }}" rows="5">{{ rule.condition | tojson }}</textarea></td>
-          <td><textarea class="json-input" name="action:{{ rule.rule_id }}" rows="5">{{ rule.action | tojson }}</textarea></td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <div class="actions end"><button type="submit">Save Rules</button></div>
-</form>
-<section class="panel compact">
+<form method="post" action="{{ url_for('save_rules') }}" class="panel table-panel priority-editor-panel">
   <div class="panel-head">
     <div>
-      <p class="eyebrow">Workbook Alignment</p>
-      <h2>Rule Case Reference</h2>
-      <p class="muted">Notes-sheet case language mapped to current rule engine behavior and upcoming rule packs.</p>
+      <h2>Rule Priority Editor</h2>
+      <p class="muted">Keep the execution order visible; condition and action JSON remain editable for admins.</p>
     </div>
+    <button type="submit">{{ icons.icon("check-circle") }}<span>Save Rules</span></button>
   </div>
+  <div class="table-shell">
+    <table data-syncfusion-grid="rules-admin" data-grid-height="620" data-grid-page-size="10">
+      <thead><tr><th>Enabled</th><th>Priority</th><th>Rule</th><th>Advanced</th></tr></thead>
+      <tbody>
+        {% for rule in rules|sort(attribute='priority') %}
+          <tr>
+            <td><input type="checkbox" name="enabled:{{ rule.rule_id }}" {% if rule.enabled %}checked{% endif %}></td>
+            <td><input class="priority-input" type="number" name="priority:{{ rule.rule_id }}" value="{{ rule.priority }}"></td>
+            <td><strong>{{ rule.name }}</strong><br><span class="mono">{{ rule.rule_id }}</span><br><span class="pill">{{ icons.icon("file-text") }}<span>{{ rule.rule_pack }}</span></span></td>
+            <td>
+              <details class="row-detail">
+                <summary>{{ icons.icon("sliders") }}<span>Rule details</span></summary>
+                <div class="rule-detail-grid">
+                  <p class="muted">{{ rule.description }}</p>
+                  <label><span>Condition</span><textarea class="json-input" name="condition:{{ rule.rule_id }}" rows="5">{{ rule.condition | tojson }}</textarea></label>
+                  <label><span>Action</span><textarea class="json-input" name="action:{{ rule.rule_id }}" rows="5">{{ rule.action | tojson }}</textarea></label>
+                </div>
+              </details>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+{% call ui.section("rules-case-reference", "Rule Case Reference", "Workbook Alignment", "Notes-sheet case language mapped to rule engine behavior and upcoming rule packs.", workbook_cases|length ~ " cases", icon_name="file-text") %}
   <div class="table-shell">
     <table data-syncfusion-grid="workbook-case-reference" data-grid-height="420" data-grid-page-size="10">
       <thead>
@@ -66,7 +88,10 @@
             <td class="wrap">{{ item.workbook_logic }}</td>
             <td class="mono">{{ item.app_reference }}</td>
             <td>
-              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">{{ item.status }}</span>
+              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">
+                {% if item.status == 'implemented' %}{{ icons.icon("check-circle") }}{% else %}{{ icons.icon("alert-triangle") }}{% endif %}
+                <span>{{ item.status }}</span>
+              </span>
             </td>
             <td class="wrap">{{ item.next_work }}</td>
           </tr>
@@ -74,15 +99,8 @@
       </tbody>
     </table>
   </div>
-</section>
-<section class="panel compact">
-  <div class="panel-head">
-    <div>
-      <p class="eyebrow">Workbook Variables</p>
-      <h2>Rule Input Dictionary</h2>
-      <p class="muted">Use these codes when translating workbook conditions into rule JSON.</p>
-    </div>
-  </div>
+{% endcall %}
+{% call ui.section("rules-variable-dictionary", "Rule Input Dictionary", "Workbook Variables", "Codes used when translating workbook conditions into rule JSON.", workbook_variables|length ~ " variables", icon_name="database") %}
   <div class="table-shell">
     <table data-syncfusion-grid="rule-variable-dictionary" data-grid-height="360" data-grid-page-size="15">
       <thead>
@@ -102,21 +120,18 @@
             <td>{{ item.label }}</td>
             <td class="mono">{{ item.app_field }}</td>
             <td>
-              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">{{ item.status }}</span>
+              <span class="pill {% if item.status == 'implemented' %}ok{% elif item.status == 'partial' %}warning{% else %}critical{% endif %}">
+                {% if item.status == 'implemented' %}{{ icons.icon("check-circle") }}{% else %}{{ icons.icon("alert-triangle") }}{% endif %}
+                <span>{{ item.status }}</span>
+              </span>
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-</section>
-<section class="panel compact">
-  <div class="panel-head">
-    <div>
-      <p class="eyebrow">Audit Trail</p>
-      <h2>Rule Versions</h2>
-    </div>
-  </div>
+{% endcall %}
+{% call ui.section("rules-audit", "Rule Versions", "Audit Trail", "Saved rule versions and source metadata.", rule_versions|length ~ " versions", icon_name="history") %}
   <table data-syncfusion-grid="rule-versions" data-grid-page-size="10">
     <thead><tr><th>Version</th><th>User</th><th>Created</th><th>Source</th><th>Summary</th></tr></thead>
     <tbody>
@@ -128,8 +143,8 @@
           <td>{{ version.source_type }}</td>
           <td>{{ version.summary }}</td>
         </tr>
-      {% endfor %}
-    </tbody>
+    {% endfor %}
+  </tbody>
   </table>
-</section>
+{% endcall %}
 {% endblock %}

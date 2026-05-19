@@ -148,6 +148,19 @@ def admin_emails() -> set[str]:
         os.environ.get("FDRE_ADMIN_EMAILS") or "",
         os.environ.get("FDRE_MODEL_ADMIN_EMAILS") or "",
     ]
+    return _email_set(raw_values)
+
+
+def internal_emails() -> set[str]:
+    raw_values = [
+        os.environ.get("FDRE_INTERNAL_EMAILS") or "",
+        os.environ.get("FDRE_MODEL_INTERNAL_EMAILS") or "",
+        os.environ.get("FDRE_MODEL_ENGINEER_EMAILS") or "",
+    ]
+    return _email_set(raw_values)
+
+
+def _email_set(raw_values: list[str]) -> set[str]:
     emails: set[str] = set()
     for raw in raw_values:
         emails.update(_normalize_email(part) for part in raw.replace(";", ",").split(",") if _normalize_email(part))

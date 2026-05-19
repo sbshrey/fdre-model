@@ -37,7 +37,9 @@ include = ["fdre_model*"]
 [tool.setuptools.package-data]
 "fdre_model" = [
   "web/templates/*.html",
+  "web/templates/components/*.html",
   "web/static/*.css",
+  "web/static/*.js",
   "sample_data/*.csv",
   "sample_data/*.json",
 ]

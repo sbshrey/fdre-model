@@ -1,63 +1,115 @@
 {% extends "base.html" %}
+{% import "components/icons.html" as icons %}
 {% block title %}Feeds | FDRE Market Operations{% endblock %}
 {% block content %}
+{% set enabled_feed_count = feeds|selectattr("enabled")|list|length %}
 <section class="page-header">
   <div>
     <p class="eyebrow">Future Live Data</p>
-    <h1>Feed Catalog</h1>
-    <p class="muted">Project-level metadata for live integrations. V2 stores the catalog only; connector execution remains future scope.</p>
+    <h1>{{ "Feed Catalog" if can_view_model_admin else "Integration Readiness" }}</h1>
+    <p class="muted">
+      {% if can_view_model_admin %}
+        Project-level metadata for live integrations. V2 stores the catalog only; connector execution remains future scope.
+      {% else %}
+        Readiness status for the operating inputs expected by this project.
+      {% endif %}
+    </p>
+  </div>
+  <div class="header-meta-strip">
+    <span>{{ icons.icon("pencil") }}<strong>Mode</strong>{{ "Internal edit" if can_view_model_admin else "Read only" }}</span>
+    <span>{{ icons.icon("folder") }}<strong>Project</strong>{{ selected_project.name if selected_project else "Default" }}</span>
   </div>
 </section>
 
-<section class="panel">
-  <form method="post" action="{{ url_for('save_feeds') }}">
+<section class="summary-grid feed-summary-grid minimal-summary-grid">
+  <div class="summary-tile">
+    <span>{{ icons.icon("rss") }}<span>Feeds</span></span>
+    <strong>{{ feeds|length }}</strong>
+    <small>Registered integration slots</small>
+  </div>
+  <div class="summary-tile">
+    <span>{{ icons.icon("check-circle") }}<span>Enabled</span></span>
+    <strong>{{ enabled_feed_count }}</strong>
+    <small>{{ feeds|length - enabled_feed_count }} disabled</small>
+  </div>
+</section>
+
+<section class="panel table-panel feed-catalog-panel">
+  <form {% if can_view_model_admin %}method="post" action="{{ url_for('save_feeds') }}"{% endif %} class="table-form">
+    <div class="panel-head">
+      <div>
+        <h2>Integration Readiness</h2>
+        <p class="muted">
+          {% if can_view_model_admin %}
+            Keep ownership, cadence, and fallback details visible without exposing connector internals.
+          {% else %}
+            Confirm which operating feeds are expected without exposing connector design.
+          {% endif %}
+        </p>
+      </div>
+      {% if can_view_model_admin %}
+        <button type="submit">{{ icons.icon("check-circle") }}<span>Save Feed Catalog</span></button>
+      {% endif %}
+    </div>
     <div class="table-shell">
-      <table>
+      <table class="feed-table">
         <thead>
           <tr>
             <th>Feed</th>
-            <th>Protocol</th>
-            <th>Frequency</th>
-            <th>Fallback</th>
-            <th>Owner</th>
+            {% if can_view_model_admin %}
+              <th>Owner</th>
+            {% endif %}
             <th>Enabled</th>
+            <th>Details</th>
           </tr>
         </thead>
         <tbody>
           {% for feed in feeds %}
             <tr>
               <td>
-                <input type="hidden" name="feed_key" value="{{ feed.feed_key }}">
-                {% if is_admin %}
+                {% if can_view_model_admin %}
+                  <input type="hidden" name="feed_key" value="{{ feed.feed_key }}">
                   <input name="name" value="{{ feed.name }}">
                 {% else %}
                   {{ feed.name }}
                 {% endif %}
               </td>
-              <td>{% if is_admin %}<input name="protocol" value="{{ feed.protocol }}">{% else %}{{ feed.protocol }}{% endif %}</td>
-              <td>{% if is_admin %}<input name="update_frequency" value="{{ feed.update_frequency }}">{% else %}{{ feed.update_frequency }}{% endif %}</td>
-              <td>{% if is_admin %}<input name="fallback_method" value="{{ feed.fallback_method }}">{% else %}{{ feed.fallback_method }}{% endif %}</td>
-              <td>{% if is_admin %}<input name="owner" value="{{ feed.owner }}">{% else %}{{ feed.owner }}{% endif %}</td>
+              {% if can_view_model_admin %}
+                <td><input name="owner" value="{{ feed.owner }}"></td>
+              {% endif %}
               <td>
-                {% if is_admin %}
+                {% if can_view_model_admin %}
                   <select name="enabled">
                     <option value="1" {% if feed.enabled %}selected{% endif %}>enabled</option>
                     <option value="0" {% if not feed.enabled %}selected{% endif %}>disabled</option>
                   </select>
                 {% else %}
-                  <span class="pill {{ 'ok' if feed.enabled else 'warning' }}">{{ "enabled" if feed.enabled else "disabled" }}</span>
+                  <span class="pill {{ 'ok' if feed.enabled else 'warning' }}">
+                    {% if feed.enabled %}{{ icons.icon("check-circle") }}{% else %}{{ icons.icon("alert-triangle") }}{% endif %}
+                    <span>{{ "enabled" if feed.enabled else "disabled" }}</span>
+                  </span>
                 {% endif %}
+              </td>
+              <td>
+                <details class="row-detail">
+                  <summary>{{ icons.icon("rss") }}<span>{{ "Feed details" if can_view_model_admin else "Readiness" }}</span></summary>
+                  <div class="row-detail-grid">
+                    {% if can_view_model_admin %}
+                      <label><span>Protocol</span><input name="protocol" value="{{ feed.protocol }}"></label>
+                      <label><span>Frequency</span><input name="update_frequency" value="{{ feed.update_frequency }}"></label>
+                      <label><span>Fallback</span><input name="fallback_method" value="{{ feed.fallback_method }}"></label>
+                    {% else %}
+                      <span><strong>Readiness</strong>{{ "Expected" if feed.enabled else "Not in use" }}</span>
+                      <span><strong>Status</strong>{{ "Available for operations" if feed.enabled else "Disabled" }}</span>
+                    {% endif %}
+                  </div>
+                </details>
               </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if is_admin %}
-      <div class="actions end">
-        <button type="submit">Save Feed Catalog</button>
-      </div>
-    {% endif %}
   </form>
 </section>
 {% endblock %}

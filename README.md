@@ -106,4 +106,12 @@ When Auth0 variables are set, the app uses hosted Auth0 login directly. Configur
 - Allowed Logout URL: `<FDRE_MODEL_PUBLIC_BASE_URL>/login`
 - Allowed Web Origin: `<FDRE_MODEL_PUBLIC_BASE_URL>`
 
+For local development on the default port, the Auth0 URLs must be exact:
+
+- Allowed Callback URL: `http://127.0.0.1:8010/callback`
+- Allowed Logout URL: `http://127.0.0.1:8010/login`
+- Allowed Web Origin: `http://127.0.0.1:8010`
+
+Auth0 rejects near-matches such as `http:127.0.0.1:8010/callback`, `localhost` when the app redirects with `127.0.0.1`, or a different port.
+
 If Management API credentials are also set, FDRE admins can fetch existing Auth0 users into the Users page. New Auth0 users are auto-activated as FDRE operators by default for the client, while explicit FDRE deactivation remains a client-level deny across all projects. Auth0 user creation, password reset, and identity deletion stay in Auth0. Grant the machine-to-machine application only the required Auth0 Management API scopes: `read:users` and `update:users`.
